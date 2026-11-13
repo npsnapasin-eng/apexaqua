@@ -5,7 +5,7 @@ import {
   Waves, Heart, ShieldCheck, CheckCircle2,
   BarChart3, Timer, Filter, Save, AlertCircle, Plus, Trash2,
   LogOut, Lock, FileSignature, Trophy, Users, RefreshCw, Layers,
-  Upload, Download, FileSpreadsheet, Calendar
+  Upload, Download, FileSpreadsheet, Calendar, UserCog, Mail, Baby
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -23,6 +23,16 @@ interface AthleteProfile {
   pin_code: string;
   pdpa_signed: boolean;
   parent_name: string;
+  parent_email: string;
+}
+
+interface StaffMember {
+  id: string;
+  full_name: string;
+  email: string;
+  staff_role: 'head_coach' | 'assistant_coach';
+  can_edit_workouts: boolean;
+  can_manage_athletes: boolean;
 }
 
 interface PoolsideRow extends AthleteProfile {
@@ -99,7 +109,6 @@ const AGE_GROUP_LABELS: Record<string, string> = {
   open: 'รุ่นทั่วไป (Open)',
 };
 
-// Turn Advantage ต่อ 50m ตามหลัก World Aquatics สำหรับแปลงสระ 50m -> 25m
 const TURN_ADVANTAGE_PER_50M: Record<string, number> = {
   Freestyle: 0.65,
   Backstroke: 0.70,
@@ -108,24 +117,39 @@ const TURN_ADVANTAGE_PER_50M: Record<string, number> = {
   IM: 0.85,
 };
 
-export default function ApexAquaProductionApp() {
-  // --- 1. Authentication State ---
+export default function ApexAquaEnterpriseApp() {
+  // --- 1. Authentication & Session State ---
   const [currentUser, setCurrentUser] = useState<{
     role: UserRole;
     name: string;
+    email?: string;
     athleteId?: string;
+    staffPermissions?: {
+      isHeadCoach: boolean;
+      canEditWorkouts: boolean;
+      canManageAthletes: boolean;
+    };
   } | null>(null);
 
   const [loginTab, setLoginTab] = useState<UserRole>('coach');
-  const [coachPasscode, setCoachPasscode] = useState('');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Athlete PIN Login State
   const [selectedAthleteLoginId, setSelectedAthleteLoginId] = useState('');
   const [athletePinInput, setAthletePinInput] = useState('');
   const [loginError, setLoginError] = useState('');
 
+  // Parent Multi-Child Active Selection State
+  const [activeParentChildId, setActiveParentChildId] = useState<string>('');
+
   // --- 2. Core Data State ---
   const [athletes, setAthletes] = useState<AthleteProfile[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [activeTab, setActiveTab] = useState<'poolside' | 'readiness' | 'acwr_tsa' | 'pdpa' | 'builder'>('poolside');
+  const [activeTab, setActiveTab] = useState<'poolside' | 'readiness' | 'acwr_tsa' | 'pdpa' | 'builder' | 'staff'>('poolside');
 
   // --- 3. Add New Athlete Modal State ---
   const [showAddModal, setShowAddModal] = useState(false);
@@ -138,17 +162,27 @@ export default function ApexAquaProductionApp() {
     athlete_code: '',
     pin_code: '1234',
     parent_name: '',
+    parent_email: '',
   });
   const [addingAthlete, setAddingAthlete] = useState(false);
 
-  // --- 4. Tab 1: Poolside State ---
+  // --- 4. Staff Management State ---
+  const [newStaff, setNewStaff] = useState({
+    full_name: '',
+    email: '',
+    staff_role: 'assistant_coach' as 'head_coach' | 'assistant_coach',
+    can_edit_workouts: false,
+    can_manage_athletes: false,
+  });
+
+  // --- 5. Tab 1: Poolside State ---
   const [poolsideRows, setPoolsideRows] = useState<PoolsideRow[]>([]);
   const [selectedLane, setSelectedLane] = useState<number | 'all'>('all');
   const [sessionDuration, setSessionDuration] = useState<number>(90);
   const [savingPoolside, setSavingPoolside] = useState(false);
   const [poolsideMsg, setPoolsideMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  // --- 5. Tab 2: Morning Readiness State ---
+  // --- 6. Tab 2: Morning Readiness State ---
   const [readinessAthleteId, setReadinessAthleteId] = useState('');
   const [rhr, setRhr] = useState(64);
   const [sleepHours, setSleepHours] = useState(8);
@@ -162,7 +196,7 @@ export default function ApexAquaProductionApp() {
   const [savingReadiness, setSavingReadiness] = useState(false);
   const [readinessMsg, setReadinessMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  // --- 6. Tab 3: ACWR, History Logs & TSA Benchmark State ---
+  // --- 7. Tab 3: ACWR, History & TSA Benchmark State ---
   const [acwrList, setAcwrList] = useState<ACWRResult[]>([]);
   const [allWorkoutLogs, setAllWorkoutLogs] = useState<WorkoutLogRecord[]>([]);
   const [tsaStandards, setTsaStandards] = useState<TSAStandard[]>([]);
@@ -180,11 +214,11 @@ export default function ApexAquaProductionApp() {
     official_time_sec: '',
   });
 
-  // --- 7. Tab 4: PDPA E-Consent State ---
+  // --- 8. Tab 4: PDPA E-Consent State ---
   const [parentSignerName, setParentSignerName] = useState('');
   const [pdpaTargetAthleteId, setPdpaTargetAthleteId] = useState('');
 
-  // --- 8. Tab 5: Workout Builder State (Dynamic Groups & Items) ---
+  // --- 9. Tab 5: Workout Builder State ---
   const [workoutTitle, setWorkoutTitle] = useState('Aerobic Threshold & Speed Endurance Set');
   const [css100m, setCss100m] = useState(75);
   const [groups, setGroups] = useState<WorkoutGroup[]>([
@@ -222,6 +256,12 @@ export default function ApexAquaProductionApp() {
       if (profErr) throw profErr;
       const list = (profData || []) as AthleteProfile[];
       setAthletes(list);
+
+      const { data: staffData } = await supabase
+        .from('club_staff')
+        .select('*')
+        .order('created_at', { ascending: true });
+      setStaffList((staffData || []) as StaffMember[]);
 
       setPoolsideRows((prev) =>
         list.map((a) => {
@@ -307,159 +347,13 @@ export default function ApexAquaProductionApp() {
     fetchAllData();
   }, [fetchAllData]);
 
-  // --- Feature 4 & 5: Import TSA 50m CSV & Auto-Generate 25m Standards ---
-  const handleDownloadSampleCsv = () => {
-    const csvContent =
-      'season_year,age_group,gender,stroke,distance_m,qualifying_time_50m_sec\n' +
-      '2026,group_5,Female,Freestyle,50,38.00\n' +
-      '2026,group_5,Male,Freestyle,50,36.80\n' +
-      '2026,group_4,Female,Freestyle,50,32.80\n' +
-      '2026,group_4,Male,Freestyle,50,31.50\n' +
-      '2026,group_3,Male,Freestyle,100,62.50\n' +
-      '2026,group_4,Male,Breaststroke,50,41.00\n';
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'TSA_Standards_50m_Template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportingCsv(true);
-    setCsvImportMsg(null);
-    try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
-      // ข้ามบรรทัดหัวตาราง (Header)
-      const dataLines = lines.slice(1);
-      const rowsToInsert: Omit<TSAStandard, 'id'>[] = [];
-
-      for (const line of dataLines) {
-        const cols = line.split(',').map((c) => c.trim());
-        if (cols.length < 6) continue;
-        const [yearStr, ageGroup, gender, stroke, distStr, time50Str] = cols;
-        const dist = Number(distStr);
-        const time50 = Number(time50Str);
-        if (!dist || !time50) continue;
-
-        // 1. เพิ่มเกณฑ์สระ 50m ทางการ
-        rowsToInsert.push({
-          course: '50m',
-          age_group: ageGroup,
-          gender,
-          stroke,
-          distance_m: dist,
-          qualifying_time_sec: time50,
-          is_official: true,
-          source_notes: `TSA Official ${yearStr} (CSV Import)`,
-        });
-
-        // 2. คำนวณเกณฑ์สระสั้น 25m อัตโนมัติ (Turn Advantage Algorithm)
-        const turns = dist / 50;
-        const advantagePerTurn = TURN_ADVANTAGE_PER_50M[stroke] ?? 0.65;
-        const time25 = Number((time50 - turns * advantagePerTurn).toFixed(2));
-
-        rowsToInsert.push({
-          course: '25m',
-          age_group: ageGroup,
-          gender,
-          stroke,
-          distance_m: dist,
-          qualifying_time_sec: time25,
-          is_official: false,
-          source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s Turn Factor)`,
-        });
-      }
-
-      if (rowsToInsert.length === 0) {
-        throw new Error('ไม่พบข้อมูลที่ถูกต้องในไฟล์ CSV กรุณาใช้รูปแบบตามไฟล์ตัวอย่าง');
-      }
-
-      const payloadWithYear = rowsToInsert.map((r) => ({ ...r, season_year: 2026 }));
-      const { error } = await supabase.from('tsa_standards').insert(payloadWithYear);
-      if (error) throw error;
-
-      setCsvImportMsg(
-        `นำเข้าสำเร็จ ${rowsToInsert.length / 2} รายการ (สร้างเกณฑ์สระ 50m + แปลงสระ 25m อัตโนมัติรวม ${rowsToInsert.length} แถว)!`
-      );
-      await fetchAllData();
-    } catch (err: unknown) {
-      alert('นำเข้าไฟล์ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setImportingCsv(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  // --- Feature 6: Export Daily Training History to CSV/Excel ---
-  const handleExportHistoryCsv = () => {
-    const visibleLogs =
-      currentUser?.role === 'coach'
-        ? allWorkoutLogs
-        : allWorkoutLogs.filter((l) => l.athlete_id === currentUser?.athleteId);
-
-    const header = 'วันที่ฝึกซ้อม,ชื่อนักกีฬา,ชื่อเล่น,กลุ่มอายุ,ระยะเวลา(นาที),ระดับความเหนื่อย(sRPE),ภาระงานรวม(AU)\n';
-    const body = visibleLogs
-      .map((log) => {
-        const ath = athletes.find((a) => a.id === log.athlete_id);
-        return [
-          log.workout_date,
-          `"${ath?.full_name || 'ไม่ทราบชื่อ'}"`,
-          `"${ath?.nickname || '-'}"`,
-          `"${AGE_GROUP_LABELS[ath?.age_group || ''] || ath?.age_group || '-'}"`,
-          log.duration_minutes,
-          log.srpe,
-          log.session_load_au,
-        ].join(',');
-      })
-      .join('\n');
-
-    const blob = new Blob(['\uFEFF' + header + body], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `ApexAqua_Training_History_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // --- Handlers: Login ---
-  const handleLogin = (e: React.FormEvent) => {
+  // --- Handlers: Supabase Auth Login & Sign Up ---
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    if (loginTab === 'coach') {
-      if (coachPasscode === 'coach2026' || coachPasscode === '1234') {
-        setCurrentUser({ role: 'coach', name: 'หัวหน้าผู้ฝึกสอน (Head Coach)' });
-        setActiveTab('poolside');
-      } else {
-        setLoginError('รหัสผ่านโค้ชไม่ถูกต้อง (ค่าเริ่มต้น: 1234)');
-      }
-    } else if (loginTab === 'parent') {
-      const ath = athletes.find((a) => a.id === selectedAthleteLoginId);
-      if (!ath) {
-        setLoginError('กรุณาเลือกชื่อนักกีฬาในความดูแล');
-        return;
-      }
-      if (athletePinInput === ath.pin_code) {
-        setCurrentUser({
-          role: 'parent',
-          name: `ผู้ปกครองของ ${ath.nickname || ath.full_name}`,
-          athleteId: ath.id,
-        });
-        setPdpaTargetAthleteId(ath.id);
-        setParentSignerName(ath.parent_name || '');
-        setActiveTab('pdpa');
-      } else {
-        setLoginError('รหัส PIN 4 หลักไม่ถูกต้อง (ค่าเริ่มต้น: 1234)');
-      }
-    } else if (loginTab === 'athlete') {
+    // 1. Athlete PIN Login (Quick Access for Youth)
+    if (loginTab === 'athlete') {
       const ath = athletes.find((a) => a.id === selectedAthleteLoginId);
       if (!ath) {
         setLoginError('ยังไม่มีรายชื่อนักกีฬาในระบบ กรุณาให้โค้ชเพิ่มรายชื่อก่อน');
@@ -475,9 +369,148 @@ export default function ApexAquaProductionApp() {
         setSelectedBenchmarkAthleteId(ath.id);
         setActiveTab('readiness');
       } else {
-        setLoginError('รหัส PIN 4 หลักไม่ถูกต้อง (ค่าเริ่มต้น: 1234)');
+        setLoginError('รหัส PIN 4 หลักไม่ถูกต้อง');
       }
+      return;
     }
+
+    // 2. Coach & Parent Real Supabase Auth (Email & Password)
+    setAuthLoading(true);
+    try {
+      const cleanEmail = emailInput.trim().toLowerCase();
+      if (!cleanEmail || !passwordInput) {
+        throw new Error('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
+      }
+
+      if (authMode === 'signup') {
+        const { error: signUpErr } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: passwordInput,
+        });
+        if (signUpErr) throw signUpErr;
+      } else {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: passwordInput,
+        });
+        if (signInErr) throw signInErr;
+      }
+
+      if (loginTab === 'coach') {
+        const staffRecord = staffList.find((s) => s.email.toLowerCase() === cleanEmail);
+        // หากเป็นอีเมลแรกที่ล็อกอินและยังไม่มีในตาราง ให้เป็น Head Coach อัตโนมัติ
+        const isFirstOrHead = !staffRecord ? staffList.length === 0 : staffRecord.staff_role === 'head_coach';
+
+        if (!staffRecord && !isFirstOrHead) {
+          await supabase.auth.signOut();
+          throw new Error('อีเมลนี้ยังไม่ได้รับสิทธิ์ทีมงานโค้ช กรุณาให้หัวหน้าผู้ฝึกสอนเพิ่มอีเมลในระบบก่อน');
+        }
+
+        setCurrentUser({
+          role: 'coach',
+          name: staffRecord ? staffRecord.full_name : `หัวหน้าผู้ฝึกสอน (${cleanEmail})`,
+          email: cleanEmail,
+          staffPermissions: {
+            isHeadCoach: isFirstOrHead,
+            canEditWorkouts: isFirstOrHead ? true : Boolean(staffRecord?.can_edit_workouts),
+            canManageAthletes: isFirstOrHead ? true : Boolean(staffRecord?.can_manage_athletes),
+          },
+        });
+        setActiveTab('poolside');
+      } else if (loginTab === 'parent') {
+        const myChildren = athletes.filter(
+          (a) => a.parent_email && a.parent_email.toLowerCase() === cleanEmail
+        );
+        if (myChildren.length === 0) {
+          throw new Error(
+            'ไม่พบรายชื่อนักกีฬาที่ผูกกับอีเมลผู้ปกครองนี้ กรุณาแจ้งโค้ชให้ระบุอีเมลของคุณในประวัตินักกีฬา'
+          );
+        }
+
+        const firstChild = myChildren[0];
+        setActiveParentChildId(firstChild.id);
+        setReadinessAthleteId(firstChild.id);
+        setSelectedBenchmarkAthleteId(firstChild.id);
+        setPdpaTargetAthleteId(firstChild.id);
+        setParentSignerName(firstChild.parent_name || '');
+
+        setCurrentUser({
+          role: 'parent',
+          name: `ผู้ปกครอง (${cleanEmail})`,
+          email: cleanEmail,
+          athleteId: firstChild.id,
+        });
+        setActiveTab('pdpa');
+      }
+    } catch (err: unknown) {
+      setLoginError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setActiveParentChildId('');
+  };
+
+  // Switch active child for Parent Family Account
+  const handleSwitchParentChild = (childId: string) => {
+    setActiveParentChildId(childId);
+    setReadinessAthleteId(childId);
+    setSelectedBenchmarkAthleteId(childId);
+    setPdpaTargetAthleteId(childId);
+    const childObj = athletes.find((a) => a.id === childId);
+    if (childObj) {
+      setParentSignerName(childObj.parent_name || '');
+    }
+    setCurrentUser((prev) => (prev ? { ...prev, athleteId: childId } : null));
+  };
+
+  // --- Handler: Staff Management (Add / Update / Delete) ---
+  const handleAddStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStaff.full_name.trim() || !newStaff.email.trim()) return;
+    try {
+      const { error } = await supabase.from('club_staff').insert([
+        {
+          full_name: newStaff.full_name.trim(),
+          email: newStaff.email.trim().toLowerCase(),
+          staff_role: newStaff.staff_role,
+          can_edit_workouts: newStaff.staff_role === 'head_coach' ? true : newStaff.can_edit_workouts,
+          can_manage_athletes: newStaff.staff_role === 'head_coach' ? true : newStaff.can_manage_athletes,
+        },
+      ]);
+      if (error) throw error;
+      setNewStaff({
+        full_name: '',
+        email: '',
+        staff_role: 'assistant_coach',
+        can_edit_workouts: false,
+        can_manage_athletes: false,
+      });
+      await fetchAllData();
+    } catch (err: unknown) {
+      alert('เพิ่มทีมงานไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const handleToggleStaffPerm = async (
+    staff: StaffMember,
+    field: 'can_edit_workouts' | 'can_manage_athletes'
+  ) => {
+    await supabase
+      .from('club_staff')
+      .update({ [field]: !staff[field] })
+      .eq('id', staff.id);
+    await fetchAllData();
+  };
+
+  const handleDeleteStaff = async (id: string) => {
+    if (!confirm('ยืนยันการลบสิทธิ์ผู้ช่วยโค้ชท่านนี้?')) return;
+    await supabase.from('club_staff').delete().eq('id', id);
+    await fetchAllData();
   };
 
   // --- Handler: Add/Delete Real Athlete ---
@@ -498,6 +531,7 @@ export default function ApexAquaProductionApp() {
           athlete_code: code,
           pin_code: newAthlete.pin_code || '1234',
           parent_name: newAthlete.parent_name.trim(),
+          parent_email: newAthlete.parent_email.trim().toLowerCase(),
           pdpa_signed: false,
         },
       ]);
@@ -512,6 +546,7 @@ export default function ApexAquaProductionApp() {
         athlete_code: '',
         pin_code: '1234',
         parent_name: '',
+        parent_email: '',
       });
       await fetchAllData();
     } catch (err: unknown) {
@@ -591,7 +626,122 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Handler: Add Competition PB ---
+  // --- Handler: TSA CSV Upload & Export ---
+  const handleDownloadSampleCsv = () => {
+    const csvContent =
+      'season_year,age_group,gender,stroke,distance_m,qualifying_time_50m_sec\n' +
+      '2026,group_5,Female,Freestyle,50,38.00\n' +
+      '2026,group_5,Male,Freestyle,50,36.80\n' +
+      '2026,group_4,Female,Freestyle,50,32.80\n' +
+      '2026,group_4,Male,Freestyle,50,31.50\n' +
+      '2026,group_3,Male,Freestyle,100,62.50\n' +
+      '2026,group_4,Male,Breaststroke,50,41.00\n';
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'TSA_Standards_50m_Template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingCsv(true);
+    setCsvImportMsg(null);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
+      const dataLines = lines.slice(1);
+      const rowsToInsert: Omit<TSAStandard, 'id'>[] = [];
+
+      for (const line of dataLines) {
+        const cols = line.split(',').map((c) => c.trim());
+        if (cols.length < 6) continue;
+        const [yearStr, ageGroup, gender, stroke, distStr, time50Str] = cols;
+        const dist = Number(distStr);
+        const time50 = Number(time50Str);
+        if (!dist || !time50) continue;
+
+        rowsToInsert.push({
+          course: '50m',
+          age_group: ageGroup,
+          gender,
+          stroke,
+          distance_m: dist,
+          qualifying_time_sec: time50,
+          is_official: true,
+          source_notes: `TSA Official ${yearStr} (CSV Import)`,
+        });
+
+        const turns = dist / 50;
+        const advantagePerTurn = TURN_ADVANTAGE_PER_50M[stroke] ?? 0.65;
+        const time25 = Number((time50 - turns * advantagePerTurn).toFixed(2));
+
+        rowsToInsert.push({
+          course: '25m',
+          age_group: ageGroup,
+          gender,
+          stroke,
+          distance_m: dist,
+          qualifying_time_sec: time25,
+          is_official: false,
+          source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s Turn Factor)`,
+        });
+      }
+
+      if (rowsToInsert.length === 0) throw new Error('ไม่พบข้อมูลที่ถูกต้องในไฟล์ CSV');
+
+      const payloadWithYear = rowsToInsert.map((r) => ({ ...r, season_year: 2026 }));
+      const { error } = await supabase.from('tsa_standards').insert(payloadWithYear);
+      if (error) throw error;
+
+      setCsvImportMsg(
+        `นำเข้าสำเร็จ ${rowsToInsert.length / 2} รายการ (สร้างเกณฑ์สระ 50m + แปลงสระ 25m อัตโนมัติรวม ${rowsToInsert.length} แถว)!`
+      );
+      await fetchAllData();
+    } catch (err: unknown) {
+      alert('นำเข้าไฟล์ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImportingCsv(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleExportHistoryCsv = () => {
+    const visibleLogs =
+      currentUser?.role === 'coach'
+        ? allWorkoutLogs
+        : allWorkoutLogs.filter((l) => l.athlete_id === currentUser?.athleteId);
+
+    const header = 'วันที่ฝึกซ้อม,ชื่อนักกีฬา,ชื่อเล่น,กลุ่มอายุ,ระยะเวลา(นาที),ระดับความเหนื่อย(sRPE),ภาระงานรวม(AU)\n';
+    const body = visibleLogs
+      .map((log) => {
+        const ath = athletes.find((a) => a.id === log.athlete_id);
+        return [
+          log.workout_date,
+          `"${ath?.full_name || 'ไม่ทราบชื่อ'}"`,
+          `"${ath?.nickname || '-'}"`,
+          `"${AGE_GROUP_LABELS[ath?.age_group || ''] || ath?.age_group || '-'}"`,
+          log.duration_minutes,
+          log.srpe,
+          log.session_load_au,
+        ].join(',');
+      })
+      .join('\n');
+
+    const blob = new Blob(['\uFEFF' + header + body], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ApexAqua_Training_History_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleAddCompTime = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBenchmarkAthleteId || !newComp.official_time_sec) return;
@@ -614,7 +764,6 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Handler: Sign PDPA E-Consent ---
   const handleSignPdpa = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pdpaTargetAthleteId || !parentSignerName.trim()) return;
@@ -638,7 +787,7 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Feature 7: Dynamic Workout Builder Helpers (Add/Remove Groups & Items) ---
+  // --- Workout Builder Helpers ---
   const handleAddGroup = () => {
     const newGrp: WorkoutGroup = {
       id: `grp-${Date.now()}`,
@@ -731,7 +880,7 @@ export default function ApexAquaProductionApp() {
   };
 
   // ============================================================================
-  // VIEW 1: LOGIN SCREEN
+  // VIEW 1: SUPABASE AUTH LOGIN SCREEN (EMAIL/PASSWORD + ATHLETE PIN)
   // ============================================================================
   if (!currentUser) {
     return (
@@ -743,7 +892,7 @@ export default function ApexAquaProductionApp() {
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white">ApexAqua</h1>
             <p className="text-xs text-slate-400">
-              ระบบบริหารและวิเคราะห์ศักยภาพนักกีฬาว่ายน้ำสโมสร (มาตรฐานสากล & PDPA)
+              ระบบบริหารและวิเคราะห์ศักยภาพนักกีฬาว่ายน้ำสโมสร (Supabase Auth & Family Account)
             </p>
           </div>
 
@@ -753,7 +902,7 @@ export default function ApexAquaProductionApp() {
               onClick={() => { setLoginTab('coach'); setLoginError(''); }}
               className={`py-2 rounded-xl transition-all ${loginTab === 'coach' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
-              โค้ช / Admin
+              โค้ช / Staff
             </button>
             <button
               type="button"
@@ -772,41 +921,28 @@ export default function ApexAquaProductionApp() {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            {loginTab === 'coach' ? (
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  รหัสผ่านสำหรับหัวหน้าผู้ฝึกสอน (Coach Passcode)
-                </label>
-                <input
-                  type="password"
-                  placeholder="กรอกรหัสผ่าน (ค่าเริ่มต้น: 1234)"
-                  value={coachPasscode}
-                  onChange={(e) => setCoachPasscode(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-500 outline-none"
-                />
-              </div>
-            ) : (
+            {loginTab === 'athlete' ? (
               <>
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    {loginTab === 'parent' ? 'เลือกชื่อนักกีฬาในความดูแล' : 'เลือกชื่อนักกีฬาของคุณ'}
+                    เลือกชื่อนักกีฬาของคุณ
                   </label>
                   <select
                     value={selectedAthleteLoginId}
                     onChange={(e) => setSelectedAthleteLoginId(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-500 outline-none"
                   >
-                    {athletes.length === 0 && <option value="">-- ยังไม่มีรายชื่อนักกีฬา (ให้โค้ชเพิ่มก่อน) --</option>}
+                    {athletes.length === 0 && <option value="">-- ยังไม่มีรายชื่อนักกีฬา --</option>}
                     {athletes.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.full_name} ({a.nickname}) - {AGE_GROUP_LABELS[a.age_group] || a.age_group}
+                        {a.full_name} ({a.nickname})
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    รหัส PIN ประจำตัว 4 หลัก (ค่าเริ่มต้น: 1234)
+                    รหัส PIN ประจำตัว 4 หลัก
                   </label>
                   <input
                     type="password"
@@ -815,6 +951,58 @@ export default function ApexAquaProductionApp() {
                     value={athletePinInput}
                     onChange={(e) => setAthletePinInput(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-center tracking-widest text-lg font-mono text-white focus:border-cyan-500 outline-none"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Sign In / Sign Up Switcher for Coach & Parent */}
+                <div className="flex justify-center gap-4 text-xs border-b border-slate-800 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('signin'); setLoginError(''); }}
+                    className={`font-bold pb-1 ${authMode === 'signin' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-500'}`}
+                  >
+                    เข้าสู่ระบบ (Sign In)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('signup'); setLoginError(''); }}
+                    className={`font-bold pb-1 ${authMode === 'signup' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}
+                  >
+                    ลงทะเบียนใช้งานครั้งแรก (Sign Up)
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    {loginTab === 'coach' ? 'อีเมลทีมงานโค้ช (Email)' : 'อีเมลผู้ปกครอง (ใช้บัญชีเดียวดูลูกได้ทุกคน)'}
+                  </label>
+                  <div className="relative">
+                    <Mail className="h-4 w-4 text-slate-500 absolute left-3.5 top-3.5" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="name@example.com"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-cyan-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    รหัสผ่าน (Password อย่างน้อย 6 ตัวอักษร)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    placeholder="••••••"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-500 outline-none"
                   />
                 </div>
               </>
@@ -829,10 +1017,19 @@ export default function ApexAquaProductionApp() {
 
             <button
               type="submit"
+              disabled={authLoading}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-sm shadow-lg transition-all flex items-center justify-center gap-2"
             >
               <Lock className="h-4 w-4" />
-              <span>เข้าสู่ระบบ ApexAqua</span>
+              <span>
+                {authLoading
+                  ? 'กำลังตรวจสอบสิทธิ์...'
+                  : loginTab === 'athlete'
+                  ? 'เข้าสู่ระบบนักกีฬา'
+                  : authMode === 'signin'
+                  ? 'เข้าสู่ระบบด้วย Supabase Auth'
+                  : 'ลงทะเบียนบัญชีใหม่และเข้าใช้งาน'}
+              </span>
             </button>
           </form>
 
@@ -845,7 +1042,7 @@ export default function ApexAquaProductionApp() {
   }
 
   // ============================================================================
-  // VIEW 2: PDPA CONSENT GATE
+  // VIEW 2: PDPA CONSENT GATE FOR YOUTH ATHLETE
   // ============================================================================
   const currentAthleteObj = athletes.find((a) => a.id === currentUser.athleteId);
   if (currentUser.role === 'athlete' && currentAthleteObj && !currentAthleteObj.pdpa_signed) {
@@ -857,14 +1054,13 @@ export default function ApexAquaProductionApp() {
           </div>
           <h2 className="text-xl font-black text-white">รอการลงนามยินยอม PDPA จากผู้ปกครอง</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            สวัสดี <b>{currentAthleteObj.nickname}</b> ตามกฎหมายคุ้มครองข้อมูลส่วนบุคคล (PDPA) สำหรับเยาวชน 
-            ต้องให้ผู้ปกครองเข้าสู่ระบบในแท็บ <b>"ผู้ปกครอง"</b> เพื่อลงนาม Digital E-Consent ก่อนจึงจะเริ่มบันทึกข้อมูลสุขภาพได้
+            สวัสดี <b>{currentAthleteObj.nickname}</b> ต้องให้ผู้ปกครองเข้าสู่ระบบด้วยอีเมลของครอบครัวในแท็บ <b>"ผู้ปกครอง"</b> เพื่อลงนาม Digital E-Consent ก่อนจึงจะเริ่มบันทึกข้อมูลสุขภาพได้
           </p>
           <button
-            onClick={() => setCurrentUser(null)}
+            onClick={handleLogout}
             className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition-all"
           >
-            กลับหน้าล็อกอิน (เพื่อให้ผู้ปกครองเข้าลงนาม)
+            กลับหน้าล็อกอิน
           </button>
         </div>
       </div>
@@ -874,23 +1070,33 @@ export default function ApexAquaProductionApp() {
   // ============================================================================
   // VIEW 3: MAIN APPLICATION DASHBOARD
   // ============================================================================
+  const parentChildrenList =
+    currentUser.role === 'parent' && currentUser.email
+      ? athletes.filter((a) => a.parent_email && a.parent_email.toLowerCase() === currentUser.email)
+      : [];
+
   const filteredPoolside =
     selectedLane === 'all' ? poolsideRows : poolsideRows.filter((r) => r.lane === selectedLane);
 
   const visibleAthletesForRole =
     currentUser.role === 'coach'
       ? athletes
+      : currentUser.role === 'parent'
+      ? parentChildrenList
       : athletes.filter((a) => a.id === currentUser.athleteId);
+
+  const activeChildId =
+    currentUser.role === 'parent' ? activeParentChildId : currentUser.athleteId;
 
   const visibleAcwrForRole =
     currentUser.role === 'coach'
       ? acwrList
-      : acwrList.filter((item) => item.athlete.id === currentUser.athleteId);
+      : acwrList.filter((item) => item.athlete.id === activeChildId);
 
   const visibleHistoryLogs =
     currentUser.role === 'coach'
       ? allWorkoutLogs
-      : allWorkoutLogs.filter((l) => l.athlete_id === currentUser.athleteId);
+      : allWorkoutLogs.filter((l) => l.athlete_id === activeChildId);
 
   const selectedBenchmarkAthlete = athletes.find((a) => a.id === selectedBenchmarkAthleteId);
   const matchingStandards = tsaStandards.filter(
@@ -900,6 +1106,10 @@ export default function ApexAquaProductionApp() {
         (s.age_group === selectedBenchmarkAthlete.age_group &&
           s.gender === selectedBenchmarkAthlete.gender))
   );
+
+  const canManageAthletes = currentUser.staffPermissions?.canManageAthletes ?? false;
+  const canEditWorkouts = currentUser.staffPermissions?.canEditWorkouts ?? false;
+  const isHeadCoach = currentUser.staffPermissions?.isHeadCoach ?? false;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-20">
@@ -914,11 +1124,11 @@ export default function ApexAquaProductionApp() {
               <div className="flex items-center gap-2">
                 <span className="font-black text-lg text-white">ApexAqua</span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-700">
-                  LIVE DB
+                  ENTERPRISE AUTH
                 </span>
               </div>
               <p className="text-[11px] text-cyan-400 font-semibold">
-                ผู้ใช้งาน: {currentUser.name}
+                {currentUser.name}
               </p>
             </div>
           </div>
@@ -932,7 +1142,7 @@ export default function ApexAquaProductionApp() {
                   activeTab === 'poolside' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Timer className="h-3.5 w-3.5" /> 1. คุมริมสระ & รายชื่อทีม
+                <Timer className="h-3.5 w-3.5" /> 1. คุมริมสระ & รายชื่อ
               </button>
             )}
 
@@ -942,7 +1152,7 @@ export default function ApexAquaProductionApp() {
                 activeTab === 'readiness' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Heart className="h-3.5 w-3.5" /> 2. เช็กอินเช้า (Readiness)
+              <Heart className="h-3.5 w-3.5" /> 2. เช็กอินเช้า
             </button>
 
             <button
@@ -961,7 +1171,7 @@ export default function ApexAquaProductionApp() {
                   activeTab === 'pdpa' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <ShieldCheck className="h-3.5 w-3.5" /> 4. สรุปครอบครัว & PDPA
+                <ShieldCheck className="h-3.5 w-3.5" /> 4. ครอบครัว & PDPA
               </button>
             )}
 
@@ -976,16 +1186,50 @@ export default function ApexAquaProductionApp() {
               </button>
             )}
 
+            {currentUser.role === 'coach' && isHeadCoach && (
+              <button
+                onClick={() => setActiveTab('staff')}
+                className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
+                  activeTab === 'staff' ? 'bg-amber-600 text-white' : 'text-amber-400 hover:text-white'
+                }`}
+              >
+                <UserCog className="h-3.5 w-3.5" /> 6. ทีมงานโค้ช
+              </button>
+            )}
+
             <button
-              onClick={() => setCurrentUser(null)}
+              onClick={handleLogout}
               className="px-3 py-1.5 rounded-xl bg-rose-950/60 text-rose-400 hover:bg-rose-900 hover:text-white flex items-center gap-1 ml-1"
-              title="ออกจากระบบ"
             >
               <LogOut className="h-3.5 w-3.5" /> ออก
             </button>
           </div>
         </div>
       </header>
+
+      {/* PARENT FAMILY MULTI-CHILD SWITCHER BAR */}
+      {currentUser.role === 'parent' && parentChildrenList.length > 0 && (
+        <div className="bg-emerald-950/40 border-b border-emerald-800/60 px-4 py-2.5">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-emerald-400 font-bold flex items-center gap-1.5 mr-2">
+              <Baby className="h-4 w-4" /> บุตรหลานในความดูแล ({parentChildrenList.length} คน):
+            </span>
+            {parentChildrenList.map((child) => (
+              <button
+                key={child.id}
+                onClick={() => handleSwitchParentChild(child.id)}
+                className={`px-3.5 py-1.5 rounded-xl font-bold transition-all ${
+                  activeParentChildId === child.id
+                    ? 'bg-emerald-600 text-white shadow'
+                    : 'bg-slate-900 text-slate-300 border border-slate-700 hover:border-emerald-500'
+                }`}
+              >
+                {child.nickname || child.full_name} ({AGE_GROUP_LABELS[child.age_group]?.split(' ')[0]})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto p-4 mt-2">
         {/* ==================================================================== */}
@@ -995,12 +1239,14 @@ export default function ApexAquaProductionApp() {
           <div className="space-y-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
-                >
-                  <Plus className="h-4 w-4" /> เพิ่มรายชื่อนักกีฬาจริง
-                </button>
+                {canManageAthletes && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
+                  >
+                    <Plus className="h-4 w-4" /> เพิ่มรายชื่อนักกีฬาจริง
+                  </button>
+                )}
 
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold ml-2">
                   <Filter className="h-3.5 w-3.5 text-slate-400 ml-2 mr-1" />
@@ -1063,7 +1309,7 @@ export default function ApexAquaProductionApp() {
                 <Users className="h-12 w-12 text-slate-600 mx-auto" />
                 <h3 className="text-lg font-bold text-white">ยังไม่มีรายชื่อนักกีฬาในระบบ</h3>
                 <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  กดปุ่ม <b>"+ เพิ่มรายชื่อนักกีฬาจริง"</b> ด้านบนเพื่อลงทะเบียนนักกีฬาของสโมสรคุณได้เลยครับ
+                  กดปุ่ม <b>"+ เพิ่มรายชื่อนักกีฬาจริง"</b> ด้านบนเพื่อลงทะเบียนนักกีฬาพร้อมระบุอีเมลผู้ปกครองได้เลยครับ
                 </p>
               </div>
             ) : (
@@ -1075,7 +1321,7 @@ export default function ApexAquaProductionApp() {
                       !row.attended && 'opacity-50'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-[240px]">
+                    <div className="flex items-center gap-3 min-w-[260px]">
                       <button
                         onClick={() =>
                           setPoolsideRows((prev) =>
@@ -1097,9 +1343,10 @@ export default function ApexAquaProductionApp() {
                             {row.full_name} ({row.nickname})
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                           <span>{AGE_GROUP_LABELS[row.age_group] || row.age_group}</span>
                           <span>• PIN: {row.pin_code}</span>
+                          {row.parent_email && <span className="text-cyan-400">• ผู้ปกครอง: {row.parent_email}</span>}
                           {row.pdpa_signed ? (
                             <span className="text-emerald-400 font-bold">• PDPA ✓</span>
                           ) : (
@@ -1144,19 +1391,21 @@ export default function ApexAquaProductionApp() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteAthlete(row.id, row.full_name)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 self-end lg:self-center"
-                      title="ลบรายชื่อนักกีฬา"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {canManageAthletes && (
+                      <button
+                        onClick={() => handleDeleteAthlete(row.id, row.full_name)}
+                        className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 self-end lg:self-center"
+                        title="ลบรายชื่อนักกีฬา"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Add Athlete Modal */}
+            {/* Add Athlete Modal with Parent Email Link */}
             {showAddModal && (
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
@@ -1185,7 +1434,7 @@ export default function ApexAquaProductionApp() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 mb-1">เพศ (สำหรับเทียบเกณฑ์ TSA)</label>
+                        <label className="block text-slate-400 mb-1">เพศ</label>
                         <select
                           value={newAthlete.gender}
                           onChange={(e) =>
@@ -1241,7 +1490,7 @@ export default function ApexAquaProductionApp() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 mb-1">ตั้งรหัส PIN 4 หลัก</label>
+                        <label className="block text-slate-400 mb-1">ตั้งรหัส PIN นักกีฬา</label>
                         <input
                           type="text"
                           maxLength={4}
@@ -1250,6 +1499,19 @@ export default function ApexAquaProductionApp() {
                           className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono"
                         />
                       </div>
+                    </div>
+                    <div>
+                      <label className="block text-cyan-400 font-bold mb-1">
+                        อีเมลผู้ปกครอง (ใช้อีเมลเดียวกันหากมีลูก 2–3 คนในบ้าน) *
+                      </label>
+                      <input
+                        required
+                        type="email"
+                        placeholder="parent@example.com"
+                        value={newAthlete.parent_email}
+                        onChange={(e) => setNewAthlete({ ...newAthlete, parent_email: e.target.value })}
+                        className="w-full bg-slate-950 border border-cyan-800 rounded-xl px-3 py-2.5 text-white"
+                      />
                     </div>
                     <div className="flex justify-end gap-2 pt-3">
                       <button
@@ -1290,7 +1552,7 @@ export default function ApexAquaProductionApp() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">เลือกนักกีฬา</label>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5">นักกีฬา</label>
               <select
                 value={readinessAthleteId}
                 onChange={(e) => setReadinessAthleteId(e.target.value)}
@@ -1397,11 +1659,10 @@ export default function ApexAquaProductionApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 3: ACWR, DAILY HISTORY EXPORT & TSA CSV IMPORT + 25m CONVERTER   */}
+        {/* TAB 3: ACWR, HISTORY EXPORT & TSA BENCHMARK                          */}
         {/* ==================================================================== */}
         {activeTab === 'acwr_tsa' && (
           <div className="space-y-8">
-            {/* Section A: ACWR Cards */}
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1474,7 +1735,7 @@ export default function ApexAquaProductionApp() {
               </div>
             </div>
 
-            {/* Section B: Daily Training History Table + Export CSV/Excel */}
+            {/* Daily Training History Table + Export CSV */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1537,7 +1798,7 @@ export default function ApexAquaProductionApp() {
               </div>
             </div>
 
-            {/* Section C: TSA Benchmark 50m / 25m + CSV Import */}
+            {/* TSA Benchmark 50m / 25m + CSV Import */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
                 <div>
@@ -1549,7 +1810,6 @@ export default function ApexAquaProductionApp() {
                   </h2>
                 </div>
 
-                {/* Coach CSV Import Controls */}
                 {currentUser.role === 'coach' && (
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -1620,7 +1880,6 @@ export default function ApexAquaProductionApp() {
                 </div>
               </div>
 
-              {/* Add Competition / PB Time Form */}
               <form
                 onSubmit={handleAddCompTime}
                 className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-xs"
@@ -1748,7 +2007,7 @@ export default function ApexAquaProductionApp() {
 
               <form onSubmit={handleSignPdpa} className="space-y-4 pt-2">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">เลือกนักกีฬาในความดูแล</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">นักกีฬาในความดูแล</label>
                   <select
                     value={pdpaTargetAthleteId}
                     onChange={(e) => setPdpaTargetAthleteId(e.target.value)}
@@ -1770,7 +2029,7 @@ export default function ApexAquaProductionApp() {
                     ไปใช้เพื่อวางแผนการฝึกซ้อมและป้องกันการบาดเจ็บของนักกีฬาเท่านั้น
                   </p>
                   <p>
-                    2. ข้อมูลทั้งหมดถูกเข้ารหัสและจำกัดสิทธิ์การเข้าถึง (Row Level Security) เฉพาะหัวหน้าผู้ฝึกสอน 
+                    2. ข้อมูลทั้งหมดถูกเข้ารหัสและจำกัดสิทธิ์การเข้าถึง (Row Level Security) เฉพาะทีมงานผู้ฝึกสอน 
                     นักกีฬาเจ้าของข้อมูล และผู้ปกครองที่ลงนามเท่านั้น
                   </p>
                 </div>
@@ -1801,10 +2060,19 @@ export default function ApexAquaProductionApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 5: WORKOUT BUILDER (UNLIMITED GROUPS & ITEMS)                    */}
+        {/* TAB 5: WORKOUT BUILDER (UNLIMITED GROUPS & ITEMS + RBAC GUARD)       */}
         {/* ==================================================================== */}
         {activeTab === 'builder' && currentUser.role === 'coach' && (
           <div className="space-y-4">
+            {!canEditWorkouts && (
+              <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-700 text-amber-300 text-xs flex items-center gap-2">
+                <Lock className="h-4 w-4 shrink-0" />
+                <span>
+                  บัญชีของคุณอยู่ในโหมด <b>ผู้ช่วยโค้ช (View Only)</b> สามารถดูโปรแกรมซ้อมได้ แต่ไม่สามารถบันทึกแก้ไขได้ (ติดต่อหัวหน้าโค้ชเพื่อขอสิทธิ์)
+                </span>
+              </div>
+            )}
+
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -1824,13 +2092,15 @@ export default function ApexAquaProductionApp() {
                     />
                     <span className="text-slate-400"> วิ</span>
                   </div>
-                  <button
-                    onClick={handleSaveWorkout}
-                    disabled={savingWorkout}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"
-                  >
-                    <Save className="h-4 w-4" /> บันทึกโปรแกรมซ้อมลง Supabase
-                  </button>
+                  {canEditWorkouts && (
+                    <button
+                      onClick={handleSaveWorkout}
+                      disabled={savingWorkout}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Save className="h-4 w-4" /> บันทึกโปรแกรมซ้อมลง Supabase
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1845,6 +2115,7 @@ export default function ApexAquaProductionApp() {
                   <label className="text-[11px] text-slate-400 block mb-1">ชื่อโปรแกรมฝึกซ้อม</label>
                   <input
                     type="text"
+                    disabled={!canEditWorkouts}
                     value={workoutTitle}
                     onChange={(e) => setWorkoutTitle(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white"
@@ -1869,6 +2140,7 @@ export default function ApexAquaProductionApp() {
                       {gIdx + 1}
                     </span>
                     <select
+                      disabled={!canEditWorkouts}
                       value={grp.category}
                       onChange={(e) =>
                         setGroups(
@@ -1890,6 +2162,7 @@ export default function ApexAquaProductionApp() {
                     <input
                       type="number"
                       min={1}
+                      disabled={!canEditWorkouts}
                       value={grp.rounds}
                       onChange={(e) =>
                         setGroups(
@@ -1901,25 +2174,26 @@ export default function ApexAquaProductionApp() {
                     <span className="text-slate-400">รอบ</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleAddItemToGroup(grp.id)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-bold flex items-center gap-1"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> เพิ่มท่าว่ายในรอบนี้
-                    </button>
-                    {groups.length > 1 && (
+                  {canEditWorkouts && (
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => handleDeleteGroup(grp.id)}
-                        className="p-1.5 rounded-lg bg-rose-950/60 text-rose-400 hover:bg-rose-900 hover:text-white"
-                        title="ลบกลุ่มเซตซ้อมนี้"
+                        onClick={() => handleAddItemToGroup(grp.id)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-bold flex items-center gap-1"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Plus className="h-3.5 w-3.5" /> เพิ่มท่าว่ายในรอบนี้
                       </button>
-                    )}
-                  </div>
+                      {groups.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteGroup(grp.id)}
+                          className="p-1.5 rounded-lg bg-rose-950/60 text-rose-400 hover:bg-rose-900 hover:text-white"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1935,6 +2209,7 @@ export default function ApexAquaProductionApp() {
                           <input
                             type="number"
                             min={1}
+                            disabled={!canEditWorkouts}
                             value={item.reps}
                             onChange={(e) =>
                               setGroups(
@@ -1954,6 +2229,7 @@ export default function ApexAquaProductionApp() {
                           />
                           <span>×</span>
                           <select
+                            disabled={!canEditWorkouts}
                             value={item.distance}
                             onChange={(e) =>
                               setGroups(
@@ -1980,6 +2256,7 @@ export default function ApexAquaProductionApp() {
                             ))}
                           </select>
                           <select
+                            disabled={!canEditWorkouts}
                             value={item.stroke}
                             onChange={(e) =>
                               setGroups(
@@ -2006,6 +2283,7 @@ export default function ApexAquaProductionApp() {
                           <span>พัก:</span>
                           <input
                             type="number"
+                            disabled={!canEditWorkouts}
                             value={item.restSec}
                             onChange={(e) =>
                               setGroups(
@@ -2035,12 +2313,11 @@ export default function ApexAquaProductionApp() {
                           <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 font-mono font-bold">
                             {interval}
                           </span>
-                          {grp.items.length > 1 && (
+                          {canEditWorkouts && grp.items.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleDeleteItemFromGroup(grp.id, item.id)}
                               className="p-1 text-slate-500 hover:text-rose-400"
-                              title="ลบรายการนี้"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -2053,14 +2330,138 @@ export default function ApexAquaProductionApp() {
               </div>
             ))}
 
-            {/* Add Unlimited Set Groups Button */}
-            <button
-              type="button"
-              onClick={handleAddGroup}
-              className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-700 hover:border-cyan-500 text-slate-400 hover:text-cyan-400 font-bold text-xs flex items-center justify-center gap-2 transition-all"
-            >
-              <Plus className="h-4 w-4" /> เพิ่มกลุ่มเซตซ้อมใหม่ (เช่น Pre-set, Main Set, Cool-down)
-            </button>
+            {canEditWorkouts && (
+              <button
+                type="button"
+                onClick={handleAddGroup}
+                className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-700 hover:border-cyan-500 text-slate-400 hover:text-cyan-400 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+              >
+                <Plus className="h-4 w-4" /> เพิ่มกลุ่มเซตซ้อมใหม่ (เช่น Pre-set, Main Set, Cool-down)
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* TAB 6: STAFF MANAGEMENT (HEAD COACH ONLY)                            */}
+        {/* ==================================================================== */}
+        {activeTab === 'staff' && currentUser.role === 'coach' && isHeadCoach && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+              <div>
+                <span className="text-[10px] font-bold uppercase text-amber-400">
+                  Role-Based Access Control (Staff Management)
+                </span>
+                <h2 className="text-xl font-black text-white">จัดการสิทธิ์ทีมงานผู้ฝึกสอน (ผู้ช่วยโค้ช)</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  เพิ่มอีเมลของผู้ช่วยโค้ชและกำหนดสิทธิ์การเข้าถึงเมนูสำคัญ (ผู้ช่วยโค้ชต้องลงทะเบียน Sign Up ด้วยอีเมลที่กำหนดไว้ที่นี่)
+                </p>
+              </div>
+
+              <form
+                onSubmit={handleAddStaff}
+                className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs"
+              >
+                <input
+                  type="text"
+                  required
+                  placeholder="ชื่อ - นามสกุลโค้ช"
+                  value={newStaff.full_name}
+                  onChange={(e) => setNewStaff({ ...newStaff, full_name: e.target.value })}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                />
+                <input
+                  type="email"
+                  required
+                  placeholder="อีเมลสำหรับล็อกอิน"
+                  value={newStaff.email}
+                  onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value })}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                />
+                <select
+                  value={newStaff.staff_role}
+                  onChange={(e) =>
+                    setNewStaff({
+                      ...newStaff,
+                      staff_role: e.target.value as 'head_coach' | 'assistant_coach',
+                    })
+                  }
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                >
+                  <option value="assistant_coach">ผู้ช่วยโค้ช (Assistant Coach)</option>
+                  <option value="head_coach">หัวหน้าโค้ช (Head Coach)</option>
+                </select>
+                <button
+                  type="submit"
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl py-2.5 px-4 flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="h-4 w-4" /> เพิ่มทีมงานโค้ช
+                </button>
+              </form>
+
+              <div className="space-y-3">
+                {staffList.map((st) => (
+                  <div
+                    key={st.id}
+                    className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-white">{st.full_name}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            st.staff_role === 'head_coach'
+                              ? 'bg-amber-950 text-amber-400 border border-amber-700'
+                              : 'bg-cyan-950 text-cyan-400 border border-cyan-800'
+                          }`}
+                        >
+                          {st.staff_role === 'head_coach' ? 'Head Coach' : 'Assistant Coach'}
+                        </span>
+                      </div>
+                      <span className="text-slate-400 block mt-0.5">{st.email}</span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={st.staff_role === 'head_coach'}
+                        onClick={() => handleToggleStaffPerm(st, 'can_edit_workouts')}
+                        className={`px-3 py-1.5 rounded-xl font-bold border transition-all ${
+                          st.can_edit_workouts
+                            ? 'bg-emerald-950/70 border-emerald-700 text-emerald-400'
+                            : 'bg-slate-900 border-slate-700 text-slate-500'
+                        }`}
+                      >
+                        {st.can_edit_workouts ? '✓ แก้ไขโปรแกรมซ้อมได้' : '✕ ดูโปรแกรมได้อย่างเดียว'}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={st.staff_role === 'head_coach'}
+                        onClick={() => handleToggleStaffPerm(st, 'can_manage_athletes')}
+                        className={`px-3 py-1.5 rounded-xl font-bold border transition-all ${
+                          st.can_manage_athletes
+                            ? 'bg-emerald-950/70 border-emerald-700 text-emerald-400'
+                            : 'bg-slate-900 border-slate-700 text-slate-500'
+                        }`}
+                      >
+                        {st.can_manage_athletes ? '✓ เพิ่ม/ลบนักกีฬาได้' : '✕ จัดการรายชื่อไม่ได้'}
+                      </button>
+
+                      {st.staff_role !== 'head_coach' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteStaff(st.id)}
+                          className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </main>
