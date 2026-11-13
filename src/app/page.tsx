@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Waves, Heart, Activity, ShieldCheck, CheckCircle2, UserCheck,
+  Waves, Heart, ShieldCheck, CheckCircle2,
   BarChart3, Timer, Filter, Save, AlertCircle, Plus, Trash2,
-  LogOut, Lock, FileSignature, Trophy, Target, Users, RefreshCw, Layers
+  LogOut, Lock, FileSignature, Trophy, Users, RefreshCw, Layers,
+  Upload, Download, FileSpreadsheet, Calendar
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -29,6 +30,16 @@ interface PoolsideRow extends AthleteProfile {
   actualTime: string;
   attended: boolean;
   srpe: number;
+}
+
+interface WorkoutLogRecord {
+  id: string;
+  athlete_id: string;
+  workout_date: string;
+  duration_minutes: number;
+  srpe: number;
+  session_load_au: number;
+  attended: boolean;
 }
 
 interface ACWRResult {
@@ -88,8 +99,17 @@ const AGE_GROUP_LABELS: Record<string, string> = {
   open: 'รุ่นทั่วไป (Open)',
 };
 
+// Turn Advantage ต่อ 50m ตามหลัก World Aquatics สำหรับแปลงสระ 50m -> 25m
+const TURN_ADVANTAGE_PER_50M: Record<string, number> = {
+  Freestyle: 0.65,
+  Backstroke: 0.70,
+  Breaststroke: 1.10,
+  Butterfly: 0.75,
+  IM: 0.85,
+};
+
 export default function ApexAquaProductionApp() {
-  // --- 1. Authentication & RBAC State ---
+  // --- 1. Authentication State ---
   const [currentUser, setCurrentUser] = useState<{
     role: UserRole;
     name: string;
@@ -102,7 +122,7 @@ export default function ApexAquaProductionApp() {
   const [athletePinInput, setAthletePinInput] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // --- 2. Core Data State (ดึงจาก Supabase จริง) ---
+  // --- 2. Core Data State ---
   const [athletes, setAthletes] = useState<AthleteProfile[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [activeTab, setActiveTab] = useState<'poolside' | 'readiness' | 'acwr_tsa' | 'pdpa' | 'builder'>('poolside');
@@ -132,7 +152,6 @@ export default function ApexAquaProductionApp() {
   const [readinessAthleteId, setReadinessAthleteId] = useState('');
   const [rhr, setRhr] = useState(64);
   const [sleepHours, setSleepHours] = useState(8);
-  const [sleepQuality, setSleepQuality] = useState(4);
   const [soreness, setSoreness] = useState({
     shoulder: 1,
     lat: 1,
@@ -143,12 +162,17 @@ export default function ApexAquaProductionApp() {
   const [savingReadiness, setSavingReadiness] = useState(false);
   const [readinessMsg, setReadinessMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  // --- 6. Tab 3: ACWR & TSA Benchmark State ---
+  // --- 6. Tab 3: ACWR, History Logs & TSA Benchmark State ---
   const [acwrList, setAcwrList] = useState<ACWRResult[]>([]);
+  const [allWorkoutLogs, setAllWorkoutLogs] = useState<WorkoutLogRecord[]>([]);
   const [tsaStandards, setTsaStandards] = useState<TSAStandard[]>([]);
   const [compLogs, setCompLogs] = useState<CompLog[]>([]);
   const [tsaCourse, setTsaCourse] = useState<'50m' | '25m'>('50m');
   const [selectedBenchmarkAthleteId, setSelectedBenchmarkAthleteId] = useState('');
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [csvImportMsg, setCsvImportMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [newComp, setNewComp] = useState({
     meet_name: 'รายการทดสอบเวลาสโมสร',
     stroke: 'Freestyle',
@@ -160,7 +184,7 @@ export default function ApexAquaProductionApp() {
   const [parentSignerName, setParentSignerName] = useState('');
   const [pdpaTargetAthleteId, setPdpaTargetAthleteId] = useState('');
 
-  // --- 8. Tab 5: Workout Builder State ---
+  // --- 8. Tab 5: Workout Builder State (Dynamic Groups & Items) ---
   const [workoutTitle, setWorkoutTitle] = useState('Aerobic Threshold & Speed Endurance Set');
   const [css100m, setCss100m] = useState(75);
   const [groups, setGroups] = useState<WorkoutGroup[]>([
@@ -185,7 +209,7 @@ export default function ApexAquaProductionApp() {
   const [savingWorkout, setSavingWorkout] = useState(false);
   const [workoutMsg, setWorkoutMsg] = useState<string | null>(null);
 
-  // --- Fetch Athletes & Base Data from Supabase ---
+  // --- Fetch All Data from Supabase ---
   const fetchAllData = useCallback(async () => {
     setLoadingData(true);
     try {
@@ -199,7 +223,6 @@ export default function ApexAquaProductionApp() {
       const list = (profData || []) as AthleteProfile[];
       setAthletes(list);
 
-      // Sync Poolside Rows
       setPoolsideRows((prev) =>
         list.map((a) => {
           const existing = prev.find((p) => p.id === a.id);
@@ -222,7 +245,6 @@ export default function ApexAquaProductionApp() {
         if (!pdpaTargetAthleteId) setPdpaTargetAthleteId(list[0].id);
       }
 
-      // Fetch Workout Logs & Readiness for ACWR
       const twentyEightDaysAgo = new Date();
       twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
       const sevenDaysAgo = new Date();
@@ -231,7 +253,10 @@ export default function ApexAquaProductionApp() {
       const { data: logsData } = await supabase
         .from('workout_logs')
         .select('*')
-        .gte('workout_date', twentyEightDaysAgo.toISOString().split('T')[0]);
+        .order('workout_date', { ascending: false });
+
+      const typedLogs = (logsData || []) as WorkoutLogRecord[];
+      setAllWorkoutLogs(typedLogs);
 
       const { data: readyData } = await supabase
         .from('daily_readiness')
@@ -239,9 +264,11 @@ export default function ApexAquaProductionApp() {
         .order('created_at', { ascending: false });
 
       const computedAcwr: ACWRResult[] = list.map((ath) => {
-        const athLogs = (logsData || []).filter((l) => l.athlete_id === ath.id);
-        const chronicTotal = athLogs.reduce((acc, cur) => acc + Number(cur.session_load_au || 0), 0);
-        const acuteTotal = athLogs
+        const athLogs28d = typedLogs.filter(
+          (l) => l.athlete_id === ath.id && new Date(l.workout_date) >= twentyEightDaysAgo
+        );
+        const chronicTotal = athLogs28d.reduce((acc, cur) => acc + Number(cur.session_load_au || 0), 0);
+        const acuteTotal = athLogs28d
           .filter((l) => new Date(l.workout_date) >= sevenDaysAgo)
           .reduce((acc, cur) => acc + Number(cur.session_load_au || 0), 0);
 
@@ -254,14 +281,13 @@ export default function ApexAquaProductionApp() {
           acuteLoad: acuteTotal,
           chronicLoad: chronicTotal,
           acwr: acwrVal,
-          sessionCount28d: athLogs.length,
+          sessionCount28d: athLogs28d.length,
           latestRhr: latestR ? latestR.rhr : null,
           latestShoulder: latestR ? latestR.shoulder_soreness : null,
         };
       });
       setAcwrList(computedAcwr);
 
-      // Fetch TSA Standards & Competition Logs
       const { data: tsaData } = await supabase.from('tsa_standards').select('*');
       setTsaStandards((tsaData || []) as TSAStandard[]);
 
@@ -281,6 +307,128 @@ export default function ApexAquaProductionApp() {
     fetchAllData();
   }, [fetchAllData]);
 
+  // --- Feature 4 & 5: Import TSA 50m CSV & Auto-Generate 25m Standards ---
+  const handleDownloadSampleCsv = () => {
+    const csvContent =
+      'season_year,age_group,gender,stroke,distance_m,qualifying_time_50m_sec\n' +
+      '2026,group_5,Female,Freestyle,50,38.00\n' +
+      '2026,group_5,Male,Freestyle,50,36.80\n' +
+      '2026,group_4,Female,Freestyle,50,32.80\n' +
+      '2026,group_4,Male,Freestyle,50,31.50\n' +
+      '2026,group_3,Male,Freestyle,100,62.50\n' +
+      '2026,group_4,Male,Breaststroke,50,41.00\n';
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'TSA_Standards_50m_Template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingCsv(true);
+    setCsvImportMsg(null);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
+      // ข้ามบรรทัดหัวตาราง (Header)
+      const dataLines = lines.slice(1);
+      const rowsToInsert: Omit<TSAStandard, 'id'>[] = [];
+
+      for (const line of dataLines) {
+        const cols = line.split(',').map((c) => c.trim());
+        if (cols.length < 6) continue;
+        const [yearStr, ageGroup, gender, stroke, distStr, time50Str] = cols;
+        const dist = Number(distStr);
+        const time50 = Number(time50Str);
+        if (!dist || !time50) continue;
+
+        // 1. เพิ่มเกณฑ์สระ 50m ทางการ
+        rowsToInsert.push({
+          course: '50m',
+          age_group: ageGroup,
+          gender,
+          stroke,
+          distance_m: dist,
+          qualifying_time_sec: time50,
+          is_official: true,
+          source_notes: `TSA Official ${yearStr} (CSV Import)`,
+        });
+
+        // 2. คำนวณเกณฑ์สระสั้น 25m อัตโนมัติ (Turn Advantage Algorithm)
+        const turns = dist / 50;
+        const advantagePerTurn = TURN_ADVANTAGE_PER_50M[stroke] ?? 0.65;
+        const time25 = Number((time50 - turns * advantagePerTurn).toFixed(2));
+
+        rowsToInsert.push({
+          course: '25m',
+          age_group: ageGroup,
+          gender,
+          stroke,
+          distance_m: dist,
+          qualifying_time_sec: time25,
+          is_official: false,
+          source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s Turn Factor)`,
+        });
+      }
+
+      if (rowsToInsert.length === 0) {
+        throw new Error('ไม่พบข้อมูลที่ถูกต้องในไฟล์ CSV กรุณาใช้รูปแบบตามไฟล์ตัวอย่าง');
+      }
+
+      const payloadWithYear = rowsToInsert.map((r) => ({ ...r, season_year: 2026 }));
+      const { error } = await supabase.from('tsa_standards').insert(payloadWithYear);
+      if (error) throw error;
+
+      setCsvImportMsg(
+        `นำเข้าสำเร็จ ${rowsToInsert.length / 2} รายการ (สร้างเกณฑ์สระ 50m + แปลงสระ 25m อัตโนมัติรวม ${rowsToInsert.length} แถว)!`
+      );
+      await fetchAllData();
+    } catch (err: unknown) {
+      alert('นำเข้าไฟล์ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImportingCsv(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // --- Feature 6: Export Daily Training History to CSV/Excel ---
+  const handleExportHistoryCsv = () => {
+    const visibleLogs =
+      currentUser?.role === 'coach'
+        ? allWorkoutLogs
+        : allWorkoutLogs.filter((l) => l.athlete_id === currentUser?.athleteId);
+
+    const header = 'วันที่ฝึกซ้อม,ชื่อนักกีฬา,ชื่อเล่น,กลุ่มอายุ,ระยะเวลา(นาที),ระดับความเหนื่อย(sRPE),ภาระงานรวม(AU)\n';
+    const body = visibleLogs
+      .map((log) => {
+        const ath = athletes.find((a) => a.id === log.athlete_id);
+        return [
+          log.workout_date,
+          `"${ath?.full_name || 'ไม่ทราบชื่อ'}"`,
+          `"${ath?.nickname || '-'}"`,
+          `"${AGE_GROUP_LABELS[ath?.age_group || ''] || ath?.age_group || '-'}"`,
+          log.duration_minutes,
+          log.srpe,
+          log.session_load_au,
+        ].join(',');
+      })
+      .join('\n');
+
+    const blob = new Blob(['\uFEFF' + header + body], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ApexAqua_Training_History_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // --- Handlers: Login ---
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -296,7 +444,7 @@ export default function ApexAquaProductionApp() {
     } else if (loginTab === 'parent') {
       const ath = athletes.find((a) => a.id === selectedAthleteLoginId);
       if (!ath) {
-        setLoginError('กรุณาเลือกชื่อนักกีฬาในความดูแล (หรือให้โค้ชเพิ่มรายชื่อนักกีฬาก่อน)');
+        setLoginError('กรุณาเลือกชื่อนักกีฬาในความดูแล');
         return;
       }
       if (athletePinInput === ath.pin_code) {
@@ -332,7 +480,7 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Handler: Add New Real Athlete ---
+  // --- Handler: Add/Delete Real Athlete ---
   const handleAddAthlete = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAthlete.full_name.trim()) return;
@@ -379,7 +527,7 @@ export default function ApexAquaProductionApp() {
     await fetchAllData();
   };
 
-  // --- Handler: Tab 1 Save Poolside Batch ---
+  // --- Handler: Save Poolside Batch ---
   const handleSavePoolside = async () => {
     const attendedRows = poolsideRows.filter((r) => r.attended);
     if (attendedRows.length === 0) return;
@@ -410,7 +558,7 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Handler: Tab 2 Save Morning Readiness ---
+  // --- Handler: Save Morning Readiness ---
   const handleSaveReadiness = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!readinessAthleteId) return;
@@ -422,7 +570,7 @@ export default function ApexAquaProductionApp() {
           athlete_id: readinessAthleteId,
           rhr,
           sleep_hours: sleepHours,
-          sleep_quality: sleepQuality,
+          sleep_quality: 4,
           shoulder_soreness: soreness.shoulder,
           lat_soreness: soreness.lat,
           core_soreness: soreness.core,
@@ -443,7 +591,7 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Handler: Tab 3 Add Competition PB ---
+  // --- Handler: Add Competition PB ---
   const handleAddCompTime = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBenchmarkAthleteId || !newComp.official_time_sec) return;
@@ -466,7 +614,7 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Handler: Tab 4 Sign PDPA E-Consent ---
+  // --- Handler: Sign PDPA E-Consent ---
   const handleSignPdpa = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pdpaTargetAthleteId || !parentSignerName.trim()) return;
@@ -490,14 +638,61 @@ export default function ApexAquaProductionApp() {
     }
   };
 
-  // --- Workout Builder Helpers ---
+  // --- Feature 7: Dynamic Workout Builder Helpers (Add/Remove Groups & Items) ---
+  const handleAddGroup = () => {
+    const newGrp: WorkoutGroup = {
+      id: `grp-${Date.now()}`,
+      category: groups.length === 1 ? 'Pre-set' : groups.length === 2 ? 'Main Set' : 'Cool-down',
+      rounds: 1,
+      restBetweenRounds: 30,
+      items: [{ id: `itm-${Date.now()}`, reps: 4, distance: 50, stroke: 'Freestyle', restSec: 20 }],
+    };
+    setGroups([...groups, newGrp]);
+  };
+
+  const handleDeleteGroup = (groupId: string) => {
+    if (groups.length <= 1) return;
+    setGroups(groups.filter((g) => g.id !== groupId));
+  };
+
+  const handleAddItemToGroup = (groupId: string) => {
+    setGroups(
+      groups.map((g) =>
+        g.id === groupId
+          ? {
+              ...g,
+              items: [
+                ...g.items,
+                { id: `itm-${Date.now()}`, reps: 4, distance: 50, stroke: 'Freestyle', restSec: 15 },
+              ],
+            }
+          : g
+      )
+    );
+  };
+
+  const handleDeleteItemFromGroup = (groupId: string, itemId: string) => {
+    setGroups(
+      groups.map((g) => {
+        if (g.id !== groupId || g.items.length <= 1) return g;
+        return { ...g, items: g.items.filter((it) => it.id !== itemId) };
+      })
+    );
+  };
+
   const classifyZone = (cat: string, dist: number, rest: number) => {
-    if (cat === 'Warm-up' || cat === 'Cool-down') return { code: 'REC', label: 'Recovery', color: 'text-emerald-400 border-emerald-700 bg-emerald-950/60', mult: 1.3 };
-    if (dist <= 25 && rest >= 30) return { code: 'SP3', label: 'Alactic Speed', color: 'text-rose-400 border-rose-700 bg-rose-950/60', mult: 0.85 };
-    if (dist <= 50 && rest >= 60) return { code: 'SP2', label: 'Lactate Prod.', color: 'text-orange-400 border-orange-700 bg-orange-950/60', mult: 0.90 };
-    if (dist <= 100 && rest >= 45) return { code: 'SP1', label: 'Lactate Tol.', color: 'text-amber-400 border-amber-700 bg-amber-950/60', mult: 0.95 };
-    if (dist <= 200 && rest >= 20) return { code: 'EN3', label: 'VO2max', color: 'text-purple-400 border-purple-700 bg-purple-950/60', mult: 0.98 };
-    if (dist >= 100 && rest >= 10 && rest <= 20) return { code: 'EN2', label: 'Threshold (AT)', color: 'text-cyan-400 border-cyan-700 bg-cyan-950/60', mult: 1.02 };
+    if (cat === 'Warm-up' || cat === 'Cool-down')
+      return { code: 'REC', label: 'Recovery', color: 'text-emerald-400 border-emerald-700 bg-emerald-950/60', mult: 1.3 };
+    if (dist <= 25 && rest >= 30)
+      return { code: 'SP3', label: 'Alactic Speed', color: 'text-rose-400 border-rose-700 bg-rose-950/60', mult: 0.85 };
+    if (dist <= 50 && rest >= 60)
+      return { code: 'SP2', label: 'Lactate Prod.', color: 'text-orange-400 border-orange-700 bg-orange-950/60', mult: 0.90 };
+    if (dist <= 100 && rest >= 45)
+      return { code: 'SP1', label: 'Lactate Tol.', color: 'text-amber-400 border-amber-700 bg-amber-950/60', mult: 0.95 };
+    if (dist <= 200 && rest >= 20)
+      return { code: 'EN3', label: 'VO2max', color: 'text-purple-400 border-purple-700 bg-purple-950/60', mult: 0.98 };
+    if (dist >= 100 && rest >= 10 && rest <= 20)
+      return { code: 'EN2', label: 'Threshold (AT)', color: 'text-cyan-400 border-cyan-700 bg-cyan-950/60', mult: 1.02 };
     return { code: 'EN1', label: 'Basic Aerobic', color: 'text-blue-400 border-blue-700 bg-blue-950/60', mult: 1.12 };
   };
 
@@ -536,7 +731,7 @@ export default function ApexAquaProductionApp() {
   };
 
   // ============================================================================
-  // VIEW 1: LOGIN SCREEN (RBAC & PDPA GATE)
+  // VIEW 1: LOGIN SCREEN
   // ============================================================================
   if (!currentUser) {
     return (
@@ -552,7 +747,6 @@ export default function ApexAquaProductionApp() {
             </p>
           </div>
 
-          {/* Role Tabs */}
           <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold">
             <button
               type="button"
@@ -651,7 +845,7 @@ export default function ApexAquaProductionApp() {
   }
 
   // ============================================================================
-  // VIEW 2: PDPA CONSENT GATE (บล็อกนักกีฬาเยาวชนหากผู้ปกครองยังไม่เซ็นยินยอม)
+  // VIEW 2: PDPA CONSENT GATE
   // ============================================================================
   const currentAthleteObj = athletes.find((a) => a.id === currentUser.athleteId);
   if (currentUser.role === 'athlete' && currentAthleteObj && !currentAthleteObj.pdpa_signed) {
@@ -678,7 +872,7 @@ export default function ApexAquaProductionApp() {
   }
 
   // ============================================================================
-  // VIEW 3: MAIN APPLICATION DASHBOARD (RBAC FILTERED)
+  // VIEW 3: MAIN APPLICATION DASHBOARD
   // ============================================================================
   const filteredPoolside =
     selectedLane === 'all' ? poolsideRows : poolsideRows.filter((r) => r.lane === selectedLane);
@@ -692,6 +886,11 @@ export default function ApexAquaProductionApp() {
     currentUser.role === 'coach'
       ? acwrList
       : acwrList.filter((item) => item.athlete.id === currentUser.athleteId);
+
+  const visibleHistoryLogs =
+    currentUser.role === 'coach'
+      ? allWorkoutLogs
+      : allWorkoutLogs.filter((l) => l.athlete_id === currentUser.athleteId);
 
   const selectedBenchmarkAthlete = athletes.find((a) => a.id === selectedBenchmarkAthleteId);
   const matchingStandards = tsaStandards.filter(
@@ -724,7 +923,7 @@ export default function ApexAquaProductionApp() {
             </div>
           </div>
 
-          {/* Navigation Tabs Filtered by Role */}
+          {/* Navigation Tabs */}
           <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold">
             {currentUser.role === 'coach' && (
               <button
@@ -737,16 +936,14 @@ export default function ApexAquaProductionApp() {
               </button>
             )}
 
-            {(currentUser.role === 'coach' || currentUser.role === 'athlete' || currentUser.role === 'parent') && (
-              <button
-                onClick={() => setActiveTab('readiness')}
-                className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                  activeTab === 'readiness' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Heart className="h-3.5 w-3.5" /> 2. เช็กอินเช้า (Readiness)
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab('readiness')}
+              className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
+                activeTab === 'readiness' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Heart className="h-3.5 w-3.5" /> 2. เช็กอินเช้า (Readiness)
+            </button>
 
             <button
               onClick={() => setActiveTab('acwr_tsa')}
@@ -754,7 +951,7 @@ export default function ApexAquaProductionApp() {
                 activeTab === 'acwr_tsa' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
-              <BarChart3 className="h-3.5 w-3.5" /> 3. ACWR & สถิติ TSA
+              <BarChart3 className="h-3.5 w-3.5" /> 3. ACWR, ประวัติ & TSA
             </button>
 
             {(currentUser.role === 'coach' || currentUser.role === 'parent') && (
@@ -796,7 +993,6 @@ export default function ApexAquaProductionApp() {
         {/* ==================================================================== */}
         {activeTab === 'poolside' && currentUser.role === 'coach' && (
           <div className="space-y-4">
-            {/* Action Bar */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -862,13 +1058,12 @@ export default function ApexAquaProductionApp() {
               </div>
             )}
 
-            {/* Empty State when no test data */}
             {!loadingData && athletes.length === 0 ? (
               <div className="bg-slate-900 border border-dashed border-slate-700 rounded-3xl p-12 text-center space-y-3">
                 <Users className="h-12 w-12 text-slate-600 mx-auto" />
                 <h3 className="text-lg font-bold text-white">ยังไม่มีรายชื่อนักกีฬาในระบบ</h3>
                 <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  ข้อมูลทดสอบทั้งหมดถูกล้างเรียบร้อยแล้ว กดปุ่ม <b>"+ เพิ่มรายชื่อนักกีฬาจริง"</b> ด้านบนเพื่อเริ่มลงทะเบียนนักกีฬาของสโมสรคุณได้เลยครับ
+                  กดปุ่ม <b>"+ เพิ่มรายชื่อนักกีฬาจริง"</b> ด้านบนเพื่อลงทะเบียนนักกีฬาของสโมสรคุณได้เลยครับ
                 </p>
               </div>
             ) : (
@@ -914,7 +1109,6 @@ export default function ApexAquaProductionApp() {
                       </div>
                     </div>
 
-                    {/* sRPE Borg CR-10 */}
                     <div className="flex-1 max-w-lg">
                       <div className="flex justify-between text-xs mb-1.5">
                         <span className="text-slate-400">
@@ -1203,7 +1397,7 @@ export default function ApexAquaProductionApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 3: ACWR REAL-TIME & TSA BENCHMARK (50m / 25m + PB DELTA)         */}
+        {/* TAB 3: ACWR, DAILY HISTORY EXPORT & TSA CSV IMPORT + 25m CONVERTER   */}
         {/* ==================================================================== */}
         {activeTab === 'acwr_tsa' && (
           <div className="space-y-8">
@@ -1280,7 +1474,70 @@ export default function ApexAquaProductionApp() {
               </div>
             </div>
 
-            {/* Section B: TSA Benchmark 50m / 25m & Personal Best (PB) */}
+            {/* Section B: Daily Training History Table + Export CSV/Excel */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5" /> Daily Training Audit Logs
+                  </span>
+                  <h2 className="text-lg font-black text-white">ตารางประวัติการซ้อมย้อนหลังรายวัน</h2>
+                </div>
+                <button
+                  onClick={handleExportHistoryCsv}
+                  disabled={visibleHistoryLogs.length === 0}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 shadow"
+                >
+                  <Download className="h-4 w-4" /> ดาวน์โหลดไฟล์ Excel (CSV)
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4">วันที่ซ้อม</th>
+                      <th className="py-3 px-4">ชื่อนักกีฬา</th>
+                      <th className="py-3 px-4 text-center">ระยะเวลา (นาที)</th>
+                      <th className="py-3 px-4 text-center">ระดับเหนื่อย (sRPE)</th>
+                      <th className="py-3 px-4 text-right">ภาระงานรวม (AU)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70 bg-slate-900/50">
+                    {visibleHistoryLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-500">
+                          ยังไม่มีประวัติการบันทึกการฝึกซ้อมในฐานข้อมูล
+                        </td>
+                      </tr>
+                    ) : (
+                      visibleHistoryLogs.slice(0, 20).map((log) => {
+                        const ath = athletes.find((a) => a.id === log.athlete_id);
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-800/40">
+                            <td className="py-3 px-4 font-mono text-slate-300">{log.workout_date}</td>
+                            <td className="py-3 px-4 font-bold text-white">
+                              {ath ? `${ath.full_name} (${ath.nickname})` : 'นักกีฬา'}
+                            </td>
+                            <td className="py-3 px-4 text-center text-slate-300">{log.duration_minutes} นาที</td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 font-bold">
+                                {log.srpe} / 10
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-black text-amber-400">
+                              {log.session_load_au} AU
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section C: TSA Benchmark 50m / 25m + CSV Import */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
                 <div>
@@ -1288,42 +1545,78 @@ export default function ApexAquaProductionApp() {
                     <Trophy className="h-3.5 w-3.5" /> Thailand Swimming Association (TSA) Benchmark 2026
                   </span>
                   <h2 className="text-xl font-black text-white mt-0.5">
-                    ฐานข้อมูลเกณฑ์เวลาสมาคมฯ และสถิติ PB รายบุคคล
+                    ฐานข้อมูลเกณฑ์เวลาสมาคมฯ (สระ 50m & แปลงสระ 25m อัตโนมัติ)
                   </h2>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={selectedBenchmarkAthleteId}
-                    onChange={(e) => setSelectedBenchmarkAthleteId(e.target.value)}
-                    disabled={currentUser.role !== 'coach'}
-                    className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white"
-                  >
-                    {visibleAthletesForRole.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.full_name} ({AGE_GROUP_LABELS[a.age_group]})
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+                {/* Coach CSV Import Controls */}
+                {currentUser.role === 'coach' && (
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
-                      onClick={() => setTsaCourse('50m')}
-                      className={`px-3 py-1.5 rounded-lg ${
-                        tsaCourse === '50m' ? 'bg-cyan-600 text-white' : 'text-slate-400'
-                      }`}
+                      type="button"
+                      onClick={handleDownloadSampleCsv}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5"
                     >
-                      สระ 50m (ทางการ)
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" /> โหลดไฟล์ตัวอย่าง CSV
                     </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={handleCsvUpload}
+                      className="hidden"
+                    />
                     <button
-                      onClick={() => setTsaCourse('25m')}
-                      className={`px-3 py-1.5 rounded-lg ${
-                        tsaCourse === '25m' ? 'bg-cyan-600 text-white' : 'text-slate-400'
-                      }`}
+                      type="button"
+                      disabled={importingCsv}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow"
                     >
-                      สระ 25m (เกณฑ์แปลง)
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>{importingCsv ? 'กำลังนำเข้า...' : 'อัปโหลดเกณฑ์ 50m (CSV)'}</span>
                     </button>
                   </div>
+                )}
+              </div>
+
+              {csvImportMsg && (
+                <div className="p-3 rounded-xl bg-emerald-950/70 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>{csvImportMsg}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <select
+                  value={selectedBenchmarkAthleteId}
+                  onChange={(e) => setSelectedBenchmarkAthleteId(e.target.value)}
+                  disabled={currentUser.role !== 'coach'}
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white"
+                >
+                  {visibleAthletesForRole.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.full_name} ({AGE_GROUP_LABELS[a.age_group]})
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+                  <button
+                    onClick={() => setTsaCourse('50m')}
+                    className={`px-3 py-1.5 rounded-lg ${
+                      tsaCourse === '50m' ? 'bg-cyan-600 text-white' : 'text-slate-400'
+                    }`}
+                  >
+                    สระ 50m (ทางการ)
+                  </button>
+                  <button
+                    onClick={() => setTsaCourse('25m')}
+                    className={`px-3 py-1.5 rounded-lg ${
+                      tsaCourse === '25m' ? 'bg-cyan-600 text-white' : 'text-slate-400'
+                    }`}
+                  >
+                    สระ 25m (เกณฑ์แปลงมาตรฐาน)
+                  </button>
                 </div>
               </div>
 
@@ -1375,7 +1668,6 @@ export default function ApexAquaProductionApp() {
                 </button>
               </form>
 
-              {/* TSA Standards & Delta Comparison Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {matchingStandards.map((std) => {
                   const athleteLogsForEvent = compLogs.filter(
@@ -1509,7 +1801,7 @@ export default function ApexAquaProductionApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 5: WORKOUT BUILDER (NESTED SETS & USA SWIMMING ZONES)            */}
+        {/* TAB 5: WORKOUT BUILDER (UNLIMITED GROUPS & ITEMS)                    */}
         {/* ==================================================================== */}
         {activeTab === 'builder' && currentUser.role === 'coach' && (
           <div className="space-y-4">
@@ -1521,7 +1813,7 @@ export default function ApexAquaProductionApp() {
                   </span>
                   <h2 className="text-xl font-black text-white">ระบบสร้างโปรแกรมฝึกซ้อมอัจฉริยะ</h2>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <div className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-xs">
                     <span className="text-slate-400">CSS 100m ฐาน: </span>
                     <input
@@ -1607,6 +1899,26 @@ export default function ApexAquaProductionApp() {
                       className="w-12 bg-slate-950 border border-slate-700 rounded-lg py-1 text-center text-amber-400 font-bold"
                     />
                     <span className="text-slate-400">รอบ</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAddItemToGroup(grp.id)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-bold flex items-center gap-1"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> เพิ่มท่าว่ายในรอบนี้
+                    </button>
+                    {groups.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteGroup(grp.id)}
+                        className="p-1.5 rounded-lg bg-rose-950/60 text-rose-400 hover:bg-rose-900 hover:text-white"
+                        title="ลบกลุ่มเซตซ้อมนี้"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1723,6 +2035,16 @@ export default function ApexAquaProductionApp() {
                           <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 font-mono font-bold">
                             {interval}
                           </span>
+                          {grp.items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItemFromGroup(grp.id, item.id)}
+                              className="p-1 text-slate-500 hover:text-rose-400"
+                              title="ลบรายการนี้"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1730,6 +2052,15 @@ export default function ApexAquaProductionApp() {
                 </div>
               </div>
             ))}
+
+            {/* Add Unlimited Set Groups Button */}
+            <button
+              type="button"
+              onClick={handleAddGroup}
+              className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-700 hover:border-cyan-500 text-slate-400 hover:text-cyan-400 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+            >
+              <Plus className="h-4 w-4" /> เพิ่มกลุ่มเซตซ้อมใหม่ (เช่น Pre-set, Main Set, Cool-down)
+            </button>
           </div>
         )}
       </main>
