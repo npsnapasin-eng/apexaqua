@@ -6,7 +6,7 @@ import {
   BarChart3, Timer, Filter, Save, AlertCircle, Plus, Trash2,
   LogOut, Lock, FileSignature, Trophy, Users, RefreshCw, Layers,
   Upload, Download, FileSpreadsheet, Calendar, UserCog, Mail, Baby,
-  Sun, Moon, Globe, Camera, Building2, HeartPulse, GraduationCap,
+  Sun, Moon, Globe, Camera, Building2, HeartPulse,
   Wifi, WifiOff, Sparkles, Clock, Activity, Utensils, BedDouble
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -249,17 +249,7 @@ function calculateDynamicAge(birthDateStr?: string) {
   return { ageYears, beYear, adYear, autoGroup };
 }
 
-function formatThaiBirthDate(birthDateStr?: string): string {
-  if (!birthDateStr) return '-';
-  const d = new Date(birthDateStr);
-  if (isNaN(d.getTime())) return birthDateStr;
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const ad = d.getFullYear();
-  return `${day}/${month}/${ad} (พ.ศ. ${ad + 543})`;
-}
-
-// --- Smart CSV Parsers (รองรับเวลา 1:02.50, ชื่อรุ่นไทย/อังกฤษ, ท่าว่ายไทย/อังกฤษ) ---
+// --- Swim Time Converters (MM:SS.ms <-> Seconds) ---
 function parseTimeToSeconds(raw: string): number {
   const clean = raw.replace(/[^0-9:.]/g, '');
   if (!clean) return NaN;
@@ -270,6 +260,18 @@ function parseTimeToSeconds(raw: string): number {
     }
   }
   return Number(clean);
+}
+
+function formatSecondsToSwimTime(totalSec: number | null): string {
+  if (totalSec === null || isNaN(totalSec)) return '-';
+  const absSec = Math.abs(totalSec);
+  const sign = totalSec < 0 ? '-' : '';
+  if (absSec < 60) {
+    return `${sign}${absSec.toFixed(2)}s`;
+  }
+  const mins = Math.floor(absSec / 60);
+  const secs = (absSec % 60).toFixed(2).padStart(5, '0');
+  return `${sign}${String(mins).padStart(2, '0')}:${secs}`;
 }
 
 function normalizeAgeGroup(raw: string): string {
@@ -489,7 +491,7 @@ const ENTHUSIASM_OPTIONS = [
   { val: 5, emoji: '🔥', label: 'คึกคักสุดๆ พร้อมลุยเต็มที่!' },
 ];
 
-export default function ApexAquaExpertValidatedApp() {
+export default function ApexAquaFinalApp() {
   // --- Theme, Language & Network Offline Sync State ---
   const [theme, setTheme] = useState<ThemeMode>('dark');
   const [lang, setLang] = useState<LangCode>('th');
@@ -1303,7 +1305,7 @@ export default function ApexAquaExpertValidatedApp() {
     }
   };
 
-  // --- CSV & TSA Handlers (รองรับเวลา 1:02.50 + รุ่นอายุไทย/อังกฤษ + ตัวคั่น , และ ;) ---
+  // --- Smart Matrix & Vertical CSV Uploader ---
   const handleDownloadSampleCsv = () => {
     const csvContent =
       'season_year,age_group,gender,stroke,distance_m,qualifying_time_50m_sec\n' +
@@ -1331,61 +1333,111 @@ export default function ApexAquaExpertValidatedApp() {
     try {
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
+      if (lines.length < 2) throw new Error('ไฟล์ CSV ไม่มีข้อมูล');
+
+      const delimiter = lines[0].includes(';') ? ';' : ',';
+      const rows = lines.map((l) => l.split(delimiter).map((c) => c.replace(/^"|"$/g, '').trim()));
       const rowsToInsert: Omit<TSAStandard, 'id'>[] = [];
 
-      for (const line of lines) {
-        const delimiter = line.includes(';') ? ';' : ',';
-        const cols = line.split(delimiter).map((c) => c.replace(/^"|"$/g, '').trim());
-        if (cols.length < 5) continue;
+      // ตรวจจับตารางแนวขวาง (Matrix Table เช่นไฟล์ Thailand Age Group Time Standard 2026)
+      const headerRowIdx = rows.findIndex((r) =>
+        r.some((cell) => /men\s*g|women\s*g|กลุ่ม\s*[1-5]|g1|g2/i.test(cell))
+      );
 
-        // ข้ามบรรทัดหัวตาราง (Header)
-        const joinedLower = cols.join(' ').toLowerCase();
-        if (joinedLower.includes('stroke') || joinedLower.includes('ท่าว่าย') || joinedLower.includes('age_group')) {
-          continue;
+      if (headerRowIdx !== -1) {
+        const headers = rows[headerRowIdx];
+        for (let rIdx = headerRowIdx + 1; rIdx < rows.length; rIdx++) {
+          const row = rows[rIdx];
+          const eventText = row.slice(0, 3).join(' ');
+          const distMatch = eventText.match(/\b(50|100|200|400|800|1500)\b/);
+          if (!distMatch) continue;
+          const dist = Number(distMatch[1]);
+          const stroke = normalizeStroke(eventText);
+          if (!['Freestyle', 'Backstroke', 'Breaststroke', 'Butterfly', 'IM'].includes(stroke)) continue;
+
+          for (let cIdx = 1; cIdx < headers.length; cIdx++) {
+            const hText = headers[cIdx];
+            const cellTime = row[cIdx];
+            if (!hText || !cellTime) continue;
+
+            const time50 = parseTimeToSeconds(cellTime);
+            if (!time50 || isNaN(time50) || time50 < 15) continue;
+
+            const isFemale = /women|female|หญิง|f/i.test(hText);
+            const gender = isFemale ? 'Female' : 'Male';
+            const ageGroup = normalizeAgeGroup(hText);
+
+            rowsToInsert.push({
+              course: '50m',
+              age_group: ageGroup,
+              gender,
+              stroke,
+              distance_m: dist,
+              qualifying_time_sec: Number(time50.toFixed(2)),
+              is_official: true,
+              source_notes: 'TSA Official 2026',
+            });
+
+            const turns = dist / 50;
+            const advantagePerTurn = TURN_ADVANTAGE_PER_50M[stroke] ?? 0.65;
+            const time25 = Number((time50 - turns * advantagePerTurn).toFixed(2));
+
+            rowsToInsert.push({
+              course: '25m',
+              age_group: ageGroup,
+              gender,
+              stroke,
+              distance_m: dist,
+              qualifying_time_sec: time25,
+              is_official: false,
+              source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s)`,
+            });
+          }
         }
+      } else {
+        for (const cols of rows.slice(1)) {
+          if (cols.length < 5) continue;
+          const hasYear = cols.length >= 6 && /^\d{4}$/.test(cols[0]);
+          const yearStr = hasYear ? cols[0] : '2026';
+          const ageGroup = normalizeAgeGroup(hasYear ? cols[1] : cols[0]);
+          const rawGender = (hasYear ? cols[2] : cols[1]).toLowerCase();
+          const gender = rawGender.includes('f') || rawGender.includes('หญิง') ? 'Female' : 'Male';
+          const stroke = normalizeStroke(hasYear ? cols[3] : cols[2]);
+          const dist = Number((hasYear ? cols[4] : cols[3]).replace(/[^0-9]/g, ''));
+          const time50 = parseTimeToSeconds(hasYear ? cols[5] : cols[4]);
 
-        const hasYear = cols.length >= 6 && /^\d{4}$/.test(cols[0]);
-        const yearStr = hasYear ? cols[0] : '2026';
-        const ageGroup = normalizeAgeGroup(hasYear ? cols[1] : cols[0]);
-        const rawGender = (hasYear ? cols[2] : cols[1]).toLowerCase();
-        const gender = rawGender.includes('f') || rawGender.includes('หญิง') ? 'Female' : 'Male';
-        const stroke = normalizeStroke(hasYear ? cols[3] : cols[2]);
-        const dist = Number((hasYear ? cols[4] : cols[3]).replace(/[^0-9]/g, ''));
-        const time50 = parseTimeToSeconds(hasYear ? cols[5] : cols[4]);
+          if (!dist || !time50 || isNaN(time50)) continue;
 
-        if (!dist || !time50 || isNaN(time50)) continue;
+          rowsToInsert.push({
+            course: '50m',
+            age_group: ageGroup,
+            gender,
+            stroke,
+            distance_m: dist,
+            qualifying_time_sec: Number(time50.toFixed(2)),
+            is_official: true,
+            source_notes: `TSA Official ${yearStr}`,
+          });
 
-        rowsToInsert.push({
-          course: '50m',
-          age_group: ageGroup,
-          gender,
-          stroke,
-          distance_m: dist,
-          qualifying_time_sec: Number(time50.toFixed(2)),
-          is_official: true,
-          source_notes: `TSA Official ${yearStr} (CSV)`,
-        });
+          const turns = dist / 50;
+          const advantagePerTurn = TURN_ADVANTAGE_PER_50M[stroke] ?? 0.65;
+          const time25 = Number((time50 - turns * advantagePerTurn).toFixed(2));
 
-        const turns = dist / 50;
-        const advantagePerTurn = TURN_ADVANTAGE_PER_50M[stroke] ?? 0.65;
-        const time25 = Number((time50 - turns * advantagePerTurn).toFixed(2));
-
-        rowsToInsert.push({
-          course: '25m',
-          age_group: ageGroup,
-          gender,
-          stroke,
-          distance_m: dist,
-          qualifying_time_sec: time25,
-          is_official: false,
-          source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s)`,
-        });
+          rowsToInsert.push({
+            course: '25m',
+            age_group: ageGroup,
+            gender,
+            stroke,
+            distance_m: dist,
+            qualifying_time_sec: time25,
+            is_official: false,
+            source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s)`,
+          });
+        }
       }
 
       if (rowsToInsert.length === 0) {
-        throw new Error(
-          'ไม่พบแถวข้อมูลที่ถูกต้อง กรุณาจัดคอลัมน์ใน CSV เป็น: ปี, รุ่นอายุ, เพศ, ท่าว่าย, ระยะทาง, เวลา (เช่น 2026, group_4, Male, Freestyle, 50, 31.50 หรือ 1:02.50)'
-        );
+        throw new Error('ไม่พบข้อมูลเกณฑ์เวลาที่ถูกต้องในไฟล์ CSV');
       }
 
       const payloadWithYear = rowsToInsert.map((r) => ({ ...r, season_year: 2026 }));
@@ -1442,6 +1494,9 @@ export default function ApexAquaExpertValidatedApp() {
     e.preventDefault();
     if (!currentUser || !selectedBenchmarkAthleteId || !newComp.official_time_sec) return;
     try {
+      const parsedSec = parseTimeToSeconds(newComp.official_time_sec);
+      if (!parsedSec || isNaN(parsedSec)) throw new Error('กรุณากรอกเวลาให้ถูกต้อง เช่น 31.20 หรือ 01:02.50');
+
       const { error } = await supabase.from('competition_logs').insert([
         {
           club_id: currentUser.clubId,
@@ -1450,7 +1505,7 @@ export default function ApexAquaExpertValidatedApp() {
           course: tsaCourse,
           stroke: newComp.stroke,
           distance_m: Number(newComp.distance_m),
-          official_time_sec: parseTimeToSeconds(newComp.official_time_sec),
+          official_time_sec: parsedSec,
         },
       ]);
       if (error) throw error;
@@ -2484,7 +2539,7 @@ export default function ApexAquaExpertValidatedApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 2: MORNING READINESS (RHR WAKING RULE + ENTHUSIASM + PAIN TYPE)  */}
+        {/* TAB 2: MORNING READINESS                                             */}
         {/* ==================================================================== */}
         {activeTab === 'readiness' && (
           <form
@@ -2660,7 +2715,7 @@ export default function ApexAquaExpertValidatedApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 3: ACWR (DYNAMIC 28D + EWMA + EARLY WARNING 1.30) & TSA          */}
+        {/* TAB 3: ACWR & TSA BENCHMARK (MATRIX CSV + MM:SS.MS FORMAT)           */}
         {/* ==================================================================== */}
         {activeTab === 'acwr_tsa' && (
           <div className="space-y-8">
@@ -2861,7 +2916,7 @@ export default function ApexAquaExpertValidatedApp() {
                     const { autoGroup } = calculateDynamicAge(a.birth_date);
                     return (
                       <option key={a.id} value={a.id}>
-                        {a.full_name} ({AGE_GROUP_LABELS[autoGroup]})
+                        {a.full_name} ({AGE_GROUP_LABELS[autoGroup]} • {a.gender})
                       </option>
                     );
                   })}
@@ -2914,11 +2969,13 @@ export default function ApexAquaExpertValidatedApp() {
                   <option value={100}>100m</option>
                   <option value={200}>200m</option>
                   <option value={400}>400m</option>
+                  <option value={800}>800m</option>
+                  <option value={1500}>1500m</option>
                 </select>
                 <input
                   type="text"
                   required
-                  placeholder="เช่น 31.20 หรือ 1:02.50"
+                  placeholder="เช่น 31.20 หรือ 01:02.50"
                   value={newComp.official_time_sec}
                   onChange={(e) => setNewComp({ ...newComp, official_time_sec: e.target.value })}
                   className={`border rounded-xl px-3 py-2 ${bgInput}`}
@@ -2961,7 +3018,9 @@ export default function ApexAquaExpertValidatedApp() {
                                 : 'bg-amber-500/10 text-amber-500 border border-amber-500/40'
                             }`}
                           >
-                            {delta <= 0 ? `Qualified (${delta}s)` : `+${delta}s`}
+                            {delta <= 0
+                              ? `ผ่านเกณฑ์ (${formatSecondsToSwimTime(delta)})`
+                              : `ขาดอีก +${formatSecondsToSwimTime(delta)}`}
                           </span>
                         )}
                       </div>
@@ -2969,13 +3028,15 @@ export default function ApexAquaExpertValidatedApp() {
                       <div className="grid grid-cols-2 gap-2 text-center text-xs">
                         <div className={`p-2.5 rounded-xl border ${bgCard}`}>
                           <span className={`block text-[10px] ${textMuted}`}>Current PB</span>
-                          <b className="text-base text-cyan-500">
-                            {bestPb !== null ? `${bestPb.toFixed(2)}s` : '-'}
+                          <b className="text-base text-cyan-500 font-mono">
+                            {formatSecondsToSwimTime(bestPb)}
                           </b>
                         </div>
                         <div className={`p-2.5 rounded-xl border ${bgCard}`}>
                           <span className={`block text-[10px] ${textMuted}`}>TSA Target</span>
-                          <b className={`text-base ${textMain}`}>{std.qualifying_time_sec.toFixed(2)}s</b>
+                          <b className={`text-base font-mono ${textMain}`}>
+                            {formatSecondsToSwimTime(std.qualifying_time_sec)}
+                          </b>
                         </div>
                       </div>
                     </div>
@@ -2987,7 +3048,7 @@ export default function ApexAquaExpertValidatedApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 4: PARENT-FRIENDLY CARD (NO JARGON) & PDPA DIGITAL E-CONSENT     */}
+        {/* TAB 4: PARENT-FRIENDLY CARD & PDPA DIGITAL E-CONSENT                 */}
         {/* ==================================================================== */}
         {activeTab === 'pdpa' && (
           <div className="max-w-3xl mx-auto space-y-6">
@@ -3110,7 +3171,7 @@ export default function ApexAquaExpertValidatedApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 5: WORKOUT BUILDER WITH QUICK PRESET TEMPLATES                   */}
+        {/* TAB 5: WORKOUT BUILDER                                               */}
         {/* ==================================================================== */}
         {activeTab === 'builder' && currentUser.role === 'coach' && (
           <div className="space-y-4">
