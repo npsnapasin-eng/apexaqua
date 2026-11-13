@@ -5,12 +5,15 @@ import {
   Waves, Heart, ShieldCheck, CheckCircle2,
   BarChart3, Timer, Filter, Save, AlertCircle, Plus, Trash2,
   LogOut, Lock, FileSignature, Trophy, Users, RefreshCw, Layers,
-  Upload, Download, FileSpreadsheet, Calendar, UserCog, Mail, Baby
+  Upload, Download, FileSpreadsheet, Calendar, UserCog, Mail, Baby,
+  Sun, Moon, Globe
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 // --- Types & Interfaces ---
 type UserRole = 'coach' | 'parent' | 'athlete';
+type LangCode = 'th' | 'en' | 'zh';
+type ThemeMode = 'dark' | 'light';
 
 interface AthleteProfile {
   id: string;
@@ -100,13 +103,182 @@ interface WorkoutGroup {
   items: WorkoutItem[];
 }
 
+// --- Multi-Language Dictionary (TH / EN / ZH) ---
+const I18N: Record<LangCode, Record<string, string>> = {
+  th: {
+    subtitle: 'ระบบบริหารและวิเคราะห์ศักยภาพนักกีฬาว่ายน้ำสโมสร',
+    roleCoach: 'โค้ช / Staff',
+    roleParent: 'ผู้ปกครอง',
+    roleAthlete: 'นักกีฬา',
+    signIn: 'เข้าสู่ระบบ (Sign In)',
+    signUp: 'ลงทะเบียนใหม่ (Sign Up)',
+    emailLabel: 'อีเมลผู้ใช้งาน (Email)',
+    passwordLabel: 'รหัสผ่าน (Password อย่างน้อย 6 ตัวอักษร)',
+    selectAthlete: 'เลือกชื่อนักกีฬา',
+    pinLabel: 'รหัส PIN ประจำตัว 4 หลัก',
+    loginBtn: 'เข้าสู่ระบบ ApexAqua',
+    pdpaFooter: 'คุ้มครองข้อมูลสุขภาพเยาวชนตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)',
+    tabPoolside: '1. คุมริมสระ & รายชื่อ',
+    tabReadiness: '2. เช็กอินเช้า',
+    tabAcwr: '3. ACWR, ประวัติ & TSA',
+    tabPdpa: '4. ครอบครัว & PDPA',
+    tabBuilder: '5. จัดเซตซ้อม',
+    tabStaff: '6. ทีมงานโค้ช',
+    logout: 'ออก',
+    dayMode: 'โหมดกลางวัน',
+    nightMode: 'โหมดกลางคืน',
+    childrenLabel: 'บุตรหลานในความดูแล',
+    addAthleteBtn: 'เพิ่มรายชื่อนักกีฬาจริง',
+    allLanes: 'ทุกลู่',
+    lane: 'ลู่',
+    duration: 'เวลาซ้อม',
+    mins: 'นาที',
+    saveAllPool: 'บันทึกคะแนนทั้งสระ',
+    srpeLabel: 'ความเหนื่อย sRPE',
+    readinessTitle: 'เช็กอินความพร้อมร่างกายตอนเช้า',
+    rhrLabel: 'ชีพจรขณะพัก (RHR)',
+    sleepLabel: 'ชั่วโมงการนอนหลับ',
+    hrs: 'ชม.',
+    sorenessTitle: 'แผนที่ความตึงกล้ามเนื้อ 5 จุด (1 = ปกติ, 5 = ตึงมาก)',
+    submitReadiness: 'ส่งข้อมูลความพร้อมเช้า',
+    acwrTitle: 'ดัชนีภาระงานสะสม ACWR (7 วัน / 28 วัน)',
+    refreshBtn: 'รีเฟรชข้อมูลจริง',
+    historyTitle: 'ตารางประวัติการซ้อมย้อนหลังรายวัน',
+    exportCsvBtn: 'ดาวน์โหลดไฟล์ Excel (CSV)',
+    tsaTitle: 'ฐานข้อมูลเกณฑ์เวลาสมาคมฯ (สระ 50m & แปลงสระ 25m อัตโนมัติ)',
+    downloadTemplate: 'โหลดไฟล์ตัวอย่าง CSV',
+    uploadCsv: 'อัปโหลดเกณฑ์ 50m (CSV)',
+    course50: 'สระ 50m (ทางการ)',
+    course25: 'สระ 25m (เกณฑ์แปลง)',
+    addPbBtn: '+ บันทึกสถิติ PB',
+    pdpaTitle: 'แบบฟอร์มลงนามยินยอมข้อมูลสุขภาพเยาวชน (PDPA Digital E-Consent)',
+    signPdpaBtn: 'ยืนยันและลงนาม PDPA Digital E-Consent',
+    builderTitle: 'ระบบสร้างโปรแกรมฝึกซ้อมอัจฉริยะ',
+    saveWorkoutBtn: 'บันทึกโปรแกรมซ้อมลง Supabase',
+    totalDist: 'ระยะทางรวมทั้งหมด',
+    meters: 'เมตร',
+    addGroupBtn: 'เพิ่มกลุ่มเซตซ้อมใหม่ (Pre-set, Main Set, Cool-down)',
+    staffTitle: 'จัดการสิทธิ์ทีมงานผู้ฝึกสอน (ผู้ช่วยโค้ช)',
+  },
+  en: {
+    subtitle: 'Club Swimming Sports Science & Performance Platform',
+    roleCoach: 'Coach / Staff',
+    roleParent: 'Parent',
+    roleAthlete: 'Athlete',
+    signIn: 'Sign In',
+    signUp: 'Sign Up (New)',
+    emailLabel: 'Email Address',
+    passwordLabel: 'Password (min. 6 characters)',
+    selectAthlete: 'Select Athlete',
+    pinLabel: '4-Digit Personal PIN',
+    loginBtn: 'Sign In to ApexAqua',
+    pdpaFooter: 'Youth health data protected under PDPA compliance.',
+    tabPoolside: '1. Poolside & Roster',
+    tabReadiness: '2. Readiness',
+    tabAcwr: '3. ACWR & TSA',
+    tabPdpa: '4. Family & PDPA',
+    tabBuilder: '5. Workout Builder',
+    tabStaff: '6. Staff RBAC',
+    logout: 'Exit',
+    dayMode: 'Day Mode',
+    nightMode: 'Night Mode',
+    childrenLabel: 'Children in Family Account',
+    addAthleteBtn: 'Add Real Athlete',
+    allLanes: 'All Lanes',
+    lane: 'Lane',
+    duration: 'Duration',
+    mins: 'mins',
+    saveAllPool: 'Save Pool Session',
+    srpeLabel: 'Exertion sRPE',
+    readinessTitle: 'Morning Pre-Training Readiness Check-in',
+    rhrLabel: 'Resting Heart Rate (RHR)',
+    sleepLabel: 'Sleep Duration',
+    hrs: 'hrs',
+    sorenessTitle: '5-Point Muscle Soreness Map (1 = Fresh, 5 = Very Sore)',
+    submitReadiness: 'Submit Morning Readiness',
+    acwrTitle: 'Cumulative Workload Index ACWR (7d / 28d)',
+    refreshBtn: 'Refresh Live Data',
+    historyTitle: 'Daily Training Audit History',
+    exportCsvBtn: 'Export Excel (CSV)',
+    tsaTitle: 'TSA Time Standards (50m Official & 25m Auto-Converted)',
+    downloadTemplate: 'CSV Template',
+    uploadCsv: 'Import 50m CSV',
+    course50: '50m Pool (Official)',
+    course25: '25m Pool (Converted)',
+    addPbBtn: '+ Log PB Time',
+    pdpaTitle: 'Youth Health Data Digital E-Consent (PDPA)',
+    signPdpaBtn: 'Confirm & Sign PDPA Digital E-Consent',
+    builderTitle: 'Smart Nested Workout Builder & Auto-Zone Engine',
+    saveWorkoutBtn: 'Save Workout to Cloud',
+    totalDist: 'Total Workout Distance',
+    meters: 'm',
+    addGroupBtn: 'Add New Set Group (Pre-set, Main Set, Cool-down)',
+    staffTitle: 'Coaching Staff & Permissions Management',
+  },
+  zh: {
+    subtitle: '游泳俱乐部运动科学与竞技表现管理平台',
+    roleCoach: '教练 / 管理',
+    roleParent: '家长',
+    roleAthlete: '运动员',
+    signIn: '登录 (Sign In)',
+    signUp: '首次注册 (Sign Up)',
+    emailLabel: '电子邮箱 (Email)',
+    passwordLabel: '密码 (至少6位字符)',
+    selectAthlete: '选择运动员姓名',
+    pinLabel: '4位数个人PIN码',
+    loginBtn: '进入 ApexAqua 系统',
+    pdpaFooter: '青少年健康数据受 PDPA 个人数据保护法严格保护',
+    tabPoolside: '1. 池边控制与名单',
+    tabReadiness: '2. 晨间状态打卡',
+    tabAcwr: '3. ACWR负荷与达标',
+    tabPdpa: '4. 家庭与PDPA授权',
+    tabBuilder: '5. 智能训练计划',
+    tabStaff: '6. 教练团队权限',
+    logout: '退出',
+    dayMode: '日间模式',
+    nightMode: '夜间模式',
+    childrenLabel: '家庭关联运动员',
+    addAthleteBtn: '添加正式运动员',
+    allLanes: '全部泳道',
+    lane: '泳道',
+    duration: '训练时长',
+    mins: '分钟',
+    saveAllPool: '保存全队训练负荷',
+    srpeLabel: '疲劳度 sRPE',
+    readinessTitle: '晨间训练前身体准备度打卡',
+    rhrLabel: '晨起静息心率 (RHR)',
+    sleepLabel: '睡眠时长',
+    hrs: '小时',
+    sorenessTitle: '5部位肌肉酸痛评估 (1 = 正常, 5 = 极度酸痛)',
+    submitReadiness: '提交晨间准备度数据',
+    acwrTitle: '急慢性训练负荷比 ACWR (7天 / 28天)',
+    refreshBtn: '刷新实时数据',
+    historyTitle: '每日训练负荷历史记录表',
+    exportCsvBtn: '导出 Excel (CSV)',
+    tsaTitle: '泳协达标成绩库 (50米官方标准 & 25米自动换算)',
+    downloadTemplate: '下载 CSV 模板',
+    uploadCsv: '导入 50米标准 (CSV)',
+    course50: '50米长池 (官方)',
+    course25: '25米短池 (换算标准)',
+    addPbBtn: '+ 记录个人最佳 PB',
+    pdpaTitle: '青少年健康数据数字知情同意书 (PDPA E-Consent)',
+    signPdpaBtn: '确认并签署 PDPA 数字授权书',
+    builderTitle: '智能循环训练计划与能量区间引擎',
+    saveWorkoutBtn: '保存训练计划至云端',
+    totalDist: '训练总距离',
+    meters: '米',
+    addGroupBtn: '添加新训练组 (热身 / 主项 / 放松)',
+    staffTitle: '助理教练团队与权限管理',
+  },
+};
+
 const AGE_GROUP_LABELS: Record<string, string> = {
-  group_5: 'กลุ่ม 5 (7–9 ปี)',
-  group_4: 'กลุ่ม 4 (10–11 ปี)',
-  group_3: 'กลุ่ม 3 (12–13 ปี)',
-  group_2: 'กลุ่ม 2 (14–15 ปี)',
-  group_1: 'กลุ่ม 1 (16–18 ปี)',
-  open: 'รุ่นทั่วไป (Open)',
+  group_5: 'Group 5 (7–9 yrs)',
+  group_4: 'Group 4 (10–11 yrs)',
+  group_3: 'Group 3 (12–13 yrs)',
+  group_2: 'Group 2 (14–15 yrs)',
+  group_1: 'Group 1 (16–18 yrs)',
+  open: 'Open',
 };
 
 const TURN_ADVANTAGE_PER_50M: Record<string, number> = {
@@ -118,6 +290,20 @@ const TURN_ADVANTAGE_PER_50M: Record<string, number> = {
 };
 
 export default function ApexAquaEnterpriseApp() {
+  // --- Theme & Language State ---
+  const [theme, setTheme] = useState<ThemeMode>('dark');
+  const [lang, setLang] = useState<LangCode>('th');
+  const t = I18N[lang];
+  const isLight = theme === 'light';
+
+  // Dynamic Theme Classes
+  const bgPage = isLight ? 'bg-slate-100 text-slate-900' : 'bg-slate-950 text-slate-100';
+  const bgCard = isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800 shadow-xl';
+  const bgSubCard = isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800';
+  const bgInput = isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-white';
+  const textMain = isLight ? 'text-slate-900' : 'text-white';
+  const textMuted = isLight ? 'text-slate-500' : 'text-slate-400';
+
   // --- 1. Authentication & Session State ---
   const [currentUser, setCurrentUser] = useState<{
     role: UserRole;
@@ -137,12 +323,9 @@ export default function ApexAquaEnterpriseApp() {
   const [passwordInput, setPasswordInput] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Athlete PIN Login State
   const [selectedAthleteLoginId, setSelectedAthleteLoginId] = useState('');
   const [athletePinInput, setAthletePinInput] = useState('');
   const [loginError, setLoginError] = useState('');
-
-  // Parent Multi-Child Active Selection State
   const [activeParentChildId, setActiveParentChildId] = useState<string>('');
 
   // --- 2. Core Data State ---
@@ -208,7 +391,7 @@ export default function ApexAquaEnterpriseApp() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [newComp, setNewComp] = useState({
-    meet_name: 'รายการทดสอบเวลาสโมสร',
+    meet_name: 'Club Time Trial',
     stroke: 'Freestyle',
     distance_m: 50,
     official_time_sec: '',
@@ -347,16 +530,54 @@ export default function ApexAquaEnterpriseApp() {
     fetchAllData();
   }, [fetchAllData]);
 
-  // --- Handlers: Supabase Auth Login & Sign Up ---
+  // --- Shared Theme & Language Switcher Bar Component ---
+  const renderControlsBar = () => (
+    <div className="flex items-center gap-2">
+      {/* Language Switcher (TH / EN / ZH) */}
+      <div className={`flex items-center rounded-xl border p-1 text-[11px] font-bold ${bgSubCard}`}>
+        <Globe className="h-3.5 w-3.5 text-cyan-500 mx-1.5" />
+        {(['th', 'en', 'zh'] as LangCode[]).map((code) => (
+          <button
+            key={code}
+            type="button"
+            onClick={() => setLang(code)}
+            className={`px-2 py-1 rounded-lg transition-all ${
+              lang === code
+                ? 'bg-cyan-600 text-white shadow'
+                : `${textMuted} hover:text-cyan-500`
+            }`}
+          >
+            {code === 'th' ? 'TH' : code === 'en' ? 'EN' : '中文'}
+          </button>
+        ))}
+      </div>
+
+      {/* Day / Night Theme Toggle */}
+      <button
+        type="button"
+        onClick={() => setTheme(isLight ? 'dark' : 'light')}
+        className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
+          isLight
+            ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+            : 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700'
+        }`}
+        title={isLight ? t.nightMode : t.dayMode}
+      >
+        {isLight ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+        <span className="hidden sm:inline">{isLight ? t.nightMode : t.dayMode}</span>
+      </button>
+    </div>
+  );
+
+  // --- Handlers: Login & Sign Up ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    // 1. Athlete PIN Login (Quick Access for Youth)
     if (loginTab === 'athlete') {
       const ath = athletes.find((a) => a.id === selectedAthleteLoginId);
       if (!ath) {
-        setLoginError('ยังไม่มีรายชื่อนักกีฬาในระบบ กรุณาให้โค้ชเพิ่มรายชื่อก่อน');
+        setLoginError('No athlete profile found.');
         return;
       }
       if (athletePinInput === ath.pin_code) {
@@ -369,18 +590,15 @@ export default function ApexAquaEnterpriseApp() {
         setSelectedBenchmarkAthleteId(ath.id);
         setActiveTab('readiness');
       } else {
-        setLoginError('รหัส PIN 4 หลักไม่ถูกต้อง');
+        setLoginError('Invalid 4-digit PIN.');
       }
       return;
     }
 
-    // 2. Coach & Parent Real Supabase Auth (Email & Password)
     setAuthLoading(true);
     try {
       const cleanEmail = emailInput.trim().toLowerCase();
-      if (!cleanEmail || !passwordInput) {
-        throw new Error('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
-      }
+      if (!cleanEmail || !passwordInput) throw new Error('Email & Password required');
 
       if (authMode === 'signup') {
         const { error: signUpErr } = await supabase.auth.signUp({
@@ -398,17 +616,16 @@ export default function ApexAquaEnterpriseApp() {
 
       if (loginTab === 'coach') {
         const staffRecord = staffList.find((s) => s.email.toLowerCase() === cleanEmail);
-        // หากเป็นอีเมลแรกที่ล็อกอินและยังไม่มีในตาราง ให้เป็น Head Coach อัตโนมัติ
         const isFirstOrHead = !staffRecord ? staffList.length === 0 : staffRecord.staff_role === 'head_coach';
 
         if (!staffRecord && !isFirstOrHead) {
           await supabase.auth.signOut();
-          throw new Error('อีเมลนี้ยังไม่ได้รับสิทธิ์ทีมงานโค้ช กรุณาให้หัวหน้าผู้ฝึกสอนเพิ่มอีเมลในระบบก่อน');
+          throw new Error('Unauthorized staff email.');
         }
 
         setCurrentUser({
           role: 'coach',
-          name: staffRecord ? staffRecord.full_name : `หัวหน้าผู้ฝึกสอน (${cleanEmail})`,
+          name: staffRecord ? staffRecord.full_name : `Head Coach (${cleanEmail})`,
           email: cleanEmail,
           staffPermissions: {
             isHeadCoach: isFirstOrHead,
@@ -422,9 +639,7 @@ export default function ApexAquaEnterpriseApp() {
           (a) => a.parent_email && a.parent_email.toLowerCase() === cleanEmail
         );
         if (myChildren.length === 0) {
-          throw new Error(
-            'ไม่พบรายชื่อนักกีฬาที่ผูกกับอีเมลผู้ปกครองนี้ กรุณาแจ้งโค้ชให้ระบุอีเมลของคุณในประวัตินักกีฬา'
-          );
+          throw new Error('No athletes linked to this parent email.');
         }
 
         const firstChild = myChildren[0];
@@ -436,7 +651,7 @@ export default function ApexAquaEnterpriseApp() {
 
         setCurrentUser({
           role: 'parent',
-          name: `ผู้ปกครอง (${cleanEmail})`,
+          name: `Parent (${cleanEmail})`,
           email: cleanEmail,
           athleteId: firstChild.id,
         });
@@ -455,20 +670,17 @@ export default function ApexAquaEnterpriseApp() {
     setActiveParentChildId('');
   };
 
-  // Switch active child for Parent Family Account
   const handleSwitchParentChild = (childId: string) => {
     setActiveParentChildId(childId);
     setReadinessAthleteId(childId);
     setSelectedBenchmarkAthleteId(childId);
     setPdpaTargetAthleteId(childId);
     const childObj = athletes.find((a) => a.id === childId);
-    if (childObj) {
-      setParentSignerName(childObj.parent_name || '');
-    }
+    if (childObj) setParentSignerName(childObj.parent_name || '');
     setCurrentUser((prev) => (prev ? { ...prev, athleteId: childId } : null));
   };
 
-  // --- Handler: Staff Management (Add / Update / Delete) ---
+  // --- Staff Management Handlers ---
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStaff.full_name.trim() || !newStaff.email.trim()) return;
@@ -492,7 +704,7 @@ export default function ApexAquaEnterpriseApp() {
       });
       await fetchAllData();
     } catch (err: unknown) {
-      alert('เพิ่มทีมงานไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+      alert(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -508,12 +720,12 @@ export default function ApexAquaEnterpriseApp() {
   };
 
   const handleDeleteStaff = async (id: string) => {
-    if (!confirm('ยืนยันการลบสิทธิ์ผู้ช่วยโค้ชท่านนี้?')) return;
+    if (!confirm('Remove staff access?')) return;
     await supabase.from('club_staff').delete().eq('id', id);
     await fetchAllData();
   };
 
-  // --- Handler: Add/Delete Real Athlete ---
+  // --- Athlete Management Handlers ---
   const handleAddAthlete = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAthlete.full_name.trim()) return;
@@ -550,19 +762,19 @@ export default function ApexAquaEnterpriseApp() {
       });
       await fetchAllData();
     } catch (err: unknown) {
-      alert('เกิดข้อผิดพลาดในการเพิ่มนักกีฬา: ' + (err instanceof Error ? err.message : String(err)));
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setAddingAthlete(false);
     }
   };
 
   const handleDeleteAthlete = async (id: string, name: string) => {
-    if (!confirm(`ยืนยันการลบรายชื่อ "${name}" และประวัติทั้งหมดออกจากฐานข้อมูลจริง?`)) return;
+    if (!confirm(`Delete "${name}"?`)) return;
     await supabase.from('profiles').delete().eq('id', id);
     await fetchAllData();
   };
 
-  // --- Handler: Save Poolside Batch ---
+  // --- Poolside & Readiness Handlers ---
   const handleSavePoolside = async () => {
     const attendedRows = poolsideRows.filter((r) => r.attended);
     if (attendedRows.length === 0) return;
@@ -580,20 +792,19 @@ export default function ApexAquaEnterpriseApp() {
       if (error) throw error;
       setPoolsideMsg({
         type: 'ok',
-        text: `บันทึกภาระงานจริงของนักกีฬา ${attendedRows.length} คน ลง Supabase เรียบร้อยแล้ว!`,
+        text: `Saved session load for ${attendedRows.length} athletes!`,
       });
       await fetchAllData();
     } catch (err: unknown) {
       setPoolsideMsg({
         type: 'err',
-        text: 'บันทึกไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)),
+        text: err instanceof Error ? err.message : String(err),
       });
     } finally {
       setSavingPoolside(false);
     }
   };
 
-  // --- Handler: Save Morning Readiness ---
   const handleSaveReadiness = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!readinessAthleteId) return;
@@ -614,19 +825,19 @@ export default function ApexAquaEnterpriseApp() {
         },
       ]);
       if (error) throw error;
-      setReadinessMsg({ type: 'ok', text: 'ส่งข้อมูลความพร้อมเช้าลงฐานข้อมูล Supabase เรียบร้อยแล้ว!' });
+      setReadinessMsg({ type: 'ok', text: 'Morning readiness saved to cloud!' });
       await fetchAllData();
     } catch (err: unknown) {
       setReadinessMsg({
         type: 'err',
-        text: 'เกิดข้อผิดพลาด: ' + (err instanceof Error ? err.message : String(err)),
+        text: err instanceof Error ? err.message : String(err),
       });
     } finally {
       setSavingReadiness(false);
     }
   };
 
-  // --- Handler: TSA CSV Upload & Export ---
+  // --- CSV Import / Export & TSA Handlers ---
   const handleDownloadSampleCsv = () => {
     const csvContent =
       'season_year,age_group,gender,stroke,distance_m,qualifying_time_50m_sec\n' +
@@ -673,7 +884,7 @@ export default function ApexAquaEnterpriseApp() {
           distance_m: dist,
           qualifying_time_sec: time50,
           is_official: true,
-          source_notes: `TSA Official ${yearStr} (CSV Import)`,
+          source_notes: `TSA Official ${yearStr} (CSV)`,
         });
 
         const turns = dist / 50;
@@ -688,22 +899,20 @@ export default function ApexAquaEnterpriseApp() {
           distance_m: dist,
           qualifying_time_sec: time25,
           is_official: false,
-          source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s Turn Factor)`,
+          source_notes: `Auto-Converted 25m (-${(turns * advantagePerTurn).toFixed(2)}s)`,
         });
       }
 
-      if (rowsToInsert.length === 0) throw new Error('ไม่พบข้อมูลที่ถูกต้องในไฟล์ CSV');
+      if (rowsToInsert.length === 0) throw new Error('Invalid CSV format');
 
       const payloadWithYear = rowsToInsert.map((r) => ({ ...r, season_year: 2026 }));
       const { error } = await supabase.from('tsa_standards').insert(payloadWithYear);
       if (error) throw error;
 
-      setCsvImportMsg(
-        `นำเข้าสำเร็จ ${rowsToInsert.length / 2} รายการ (สร้างเกณฑ์สระ 50m + แปลงสระ 25m อัตโนมัติรวม ${rowsToInsert.length} แถว)!`
-      );
+      setCsvImportMsg(`Imported ${rowsToInsert.length / 2} 50m events + ${rowsToInsert.length / 2} auto-converted 25m events!`);
       await fetchAllData();
     } catch (err: unknown) {
-      alert('นำเข้าไฟล์ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setImportingCsv(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -716,13 +925,13 @@ export default function ApexAquaEnterpriseApp() {
         ? allWorkoutLogs
         : allWorkoutLogs.filter((l) => l.athlete_id === currentUser?.athleteId);
 
-    const header = 'วันที่ฝึกซ้อม,ชื่อนักกีฬา,ชื่อเล่น,กลุ่มอายุ,ระยะเวลา(นาที),ระดับความเหนื่อย(sRPE),ภาระงานรวม(AU)\n';
+    const header = 'Date,Athlete,Nickname,Group,Duration(min),sRPE,SessionLoad(AU)\n';
     const body = visibleLogs
       .map((log) => {
         const ath = athletes.find((a) => a.id === log.athlete_id);
         return [
           log.workout_date,
-          `"${ath?.full_name || 'ไม่ทราบชื่อ'}"`,
+          `"${ath?.full_name || '-'}"`,
           `"${ath?.nickname || '-'}"`,
           `"${AGE_GROUP_LABELS[ath?.age_group || ''] || ath?.age_group || '-'}"`,
           log.duration_minutes,
@@ -736,7 +945,7 @@ export default function ApexAquaEnterpriseApp() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `ApexAqua_Training_History_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `ApexAqua_History_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -760,7 +969,7 @@ export default function ApexAquaEnterpriseApp() {
       setNewComp({ ...newComp, official_time_sec: '' });
       await fetchAllData();
     } catch (err: unknown) {
-      alert('บันทึกเวลาไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+      alert(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -780,10 +989,10 @@ export default function ApexAquaEnterpriseApp() {
         .from('profiles')
         .update({ pdpa_signed: true, parent_name: parentSignerName.trim() })
         .eq('id', pdpaTargetAthleteId);
-      alert('ลงนามยินยอม PDPA E-Consent เรียบร้อยแล้ว! เปิดสิทธิ์การใช้งานให้นักกีฬาสมบูรณ์');
+      alert('PDPA Digital E-Consent Signed!');
       await fetchAllData();
     } catch (err: unknown) {
-      alert('เกิดข้อผิดพลาด: ' + (err instanceof Error ? err.message : String(err)));
+      alert(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -831,18 +1040,18 @@ export default function ApexAquaEnterpriseApp() {
 
   const classifyZone = (cat: string, dist: number, rest: number) => {
     if (cat === 'Warm-up' || cat === 'Cool-down')
-      return { code: 'REC', label: 'Recovery', color: 'text-emerald-400 border-emerald-700 bg-emerald-950/60', mult: 1.3 };
+      return { code: 'REC', label: 'Recovery', color: 'text-emerald-500 border-emerald-500/40 bg-emerald-500/10', mult: 1.3 };
     if (dist <= 25 && rest >= 30)
-      return { code: 'SP3', label: 'Alactic Speed', color: 'text-rose-400 border-rose-700 bg-rose-950/60', mult: 0.85 };
+      return { code: 'SP3', label: 'Alactic Speed', color: 'text-rose-500 border-rose-500/40 bg-rose-500/10', mult: 0.85 };
     if (dist <= 50 && rest >= 60)
-      return { code: 'SP2', label: 'Lactate Prod.', color: 'text-orange-400 border-orange-700 bg-orange-950/60', mult: 0.90 };
+      return { code: 'SP2', label: 'Lactate Prod.', color: 'text-orange-500 border-orange-500/40 bg-orange-500/10', mult: 0.90 };
     if (dist <= 100 && rest >= 45)
-      return { code: 'SP1', label: 'Lactate Tol.', color: 'text-amber-400 border-amber-700 bg-amber-950/60', mult: 0.95 };
+      return { code: 'SP1', label: 'Lactate Tol.', color: 'text-amber-500 border-amber-500/40 bg-amber-500/10', mult: 0.95 };
     if (dist <= 200 && rest >= 20)
-      return { code: 'EN3', label: 'VO2max', color: 'text-purple-400 border-purple-700 bg-purple-950/60', mult: 0.98 };
+      return { code: 'EN3', label: 'VO2max', color: 'text-purple-500 border-purple-500/40 bg-purple-500/10', mult: 0.98 };
     if (dist >= 100 && rest >= 10 && rest <= 20)
-      return { code: 'EN2', label: 'Threshold (AT)', color: 'text-cyan-400 border-cyan-700 bg-cyan-950/60', mult: 1.02 };
-    return { code: 'EN1', label: 'Basic Aerobic', color: 'text-blue-400 border-blue-700 bg-blue-950/60', mult: 1.12 };
+      return { code: 'EN2', label: 'Threshold (AT)', color: 'text-cyan-500 border-cyan-500/40 bg-cyan-500/10', mult: 1.02 };
+    return { code: 'EN1', label: 'Basic Aerobic', color: 'text-blue-500 border-blue-500/40 bg-blue-500/10', mult: 1.12 };
   };
 
   const calcInterval = (dist: number, rest: number, mult: number) => {
@@ -871,52 +1080,53 @@ export default function ApexAquaEnterpriseApp() {
         },
       ]);
       if (error) throw error;
-      setWorkoutMsg(`บันทึกโปรแกรม "${workoutTitle}" (${totalWorkoutDist.toLocaleString()} ม.) ลง Supabase สำเร็จ!`);
+      setWorkoutMsg(`Saved "${workoutTitle}" (${totalWorkoutDist.toLocaleString()} m)!`);
     } catch (err: unknown) {
-      alert('บันทึกโปรแกรมไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingWorkout(false);
     }
   };
 
   // ============================================================================
-  // VIEW 1: SUPABASE AUTH LOGIN SCREEN (EMAIL/PASSWORD + ATHLETE PIN)
+  // VIEW 1: LOGIN SCREEN
   // ============================================================================
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-7 shadow-2xl space-y-6">
+      <div className={`min-h-screen ${bgPage} flex flex-col items-center justify-center p-4 transition-colors`}>
+        {/* Top Controls on Login Page */}
+        <div className="mb-4">{renderControlsBar()}</div>
+
+        <div className={`max-w-md w-full border rounded-3xl p-7 space-y-6 ${bgCard}`}>
           <div className="text-center space-y-2">
             <div className="mx-auto h-14 w-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
               <Waves className="h-8 w-8 text-white" />
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white">ApexAqua</h1>
-            <p className="text-xs text-slate-400">
-              ระบบบริหารและวิเคราะห์ศักยภาพนักกีฬาว่ายน้ำสโมสร (Supabase Auth & Family Account)
-            </p>
+            <h1 className={`text-2xl font-black tracking-tight ${textMain}`}>ApexAqua</h1>
+            <p className={`text-xs ${textMuted}`}>{t.subtitle}</p>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold">
+          <div className={`grid grid-cols-3 gap-1.5 p-1.5 rounded-2xl border text-xs font-bold ${bgSubCard}`}>
             <button
               type="button"
               onClick={() => { setLoginTab('coach'); setLoginError(''); }}
-              className={`py-2 rounded-xl transition-all ${loginTab === 'coach' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              className={`py-2 rounded-xl transition-all ${loginTab === 'coach' ? 'bg-cyan-600 text-white shadow' : textMuted}`}
             >
-              โค้ช / Staff
+              {t.roleCoach}
             </button>
             <button
               type="button"
               onClick={() => { setLoginTab('parent'); setLoginError(''); }}
-              className={`py-2 rounded-xl transition-all ${loginTab === 'parent' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              className={`py-2 rounded-xl transition-all ${loginTab === 'parent' ? 'bg-emerald-600 text-white shadow' : textMuted}`}
             >
-              ผู้ปกครอง
+              {t.roleParent}
             </button>
             <button
               type="button"
               onClick={() => { setLoginTab('athlete'); setLoginError(''); }}
-              className={`py-2 rounded-xl transition-all ${loginTab === 'athlete' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              className={`py-2 rounded-xl transition-all ${loginTab === 'athlete' ? 'bg-blue-600 text-white shadow' : textMuted}`}
             >
-              นักกีฬา
+              {t.roleAthlete}
             </button>
           </div>
 
@@ -924,15 +1134,13 @@ export default function ApexAquaEnterpriseApp() {
             {loginTab === 'athlete' ? (
               <>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    เลือกชื่อนักกีฬาของคุณ
-                  </label>
+                  <label className={`block text-xs font-bold mb-1.5 ${textMain}`}>{t.selectAthlete}</label>
                   <select
                     value={selectedAthleteLoginId}
                     onChange={(e) => setSelectedAthleteLoginId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-500 outline-none"
+                    className={`w-full border rounded-xl px-4 py-3 text-sm outline-none ${bgInput}`}
                   >
-                    {athletes.length === 0 && <option value="">-- ยังไม่มีรายชื่อนักกีฬา --</option>}
+                    {athletes.length === 0 && <option value="">-- No Athletes --</option>}
                     {athletes.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.full_name} ({a.nickname})
@@ -941,60 +1149,53 @@ export default function ApexAquaEnterpriseApp() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    รหัส PIN ประจำตัว 4 หลัก
-                  </label>
+                  <label className={`block text-xs font-bold mb-1.5 ${textMain}`}>{t.pinLabel}</label>
                   <input
                     type="password"
                     maxLength={4}
                     placeholder="••••"
                     value={athletePinInput}
                     onChange={(e) => setAthletePinInput(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-center tracking-widest text-lg font-mono text-white focus:border-cyan-500 outline-none"
+                    className={`w-full border rounded-xl px-4 py-3 text-center tracking-widest text-lg font-mono outline-none ${bgInput}`}
                   />
                 </div>
               </>
             ) : (
               <>
-                {/* Sign In / Sign Up Switcher for Coach & Parent */}
-                <div className="flex justify-center gap-4 text-xs border-b border-slate-800 pb-2">
+                <div className="flex justify-center gap-4 text-xs border-b border-slate-700/30 pb-2">
                   <button
                     type="button"
                     onClick={() => { setAuthMode('signin'); setLoginError(''); }}
-                    className={`font-bold pb-1 ${authMode === 'signin' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-500'}`}
+                    className={`font-bold pb-1 ${authMode === 'signin' ? 'text-cyan-500 border-b-2 border-cyan-500' : textMuted}`}
                   >
-                    เข้าสู่ระบบ (Sign In)
+                    {t.signIn}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setAuthMode('signup'); setLoginError(''); }}
-                    className={`font-bold pb-1 ${authMode === 'signup' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}
+                    className={`font-bold pb-1 ${authMode === 'signup' ? 'text-emerald-500 border-b-2 border-emerald-500' : textMuted}`}
                   >
-                    ลงทะเบียนใช้งานครั้งแรก (Sign Up)
+                    {t.signUp}
                   </button>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    {loginTab === 'coach' ? 'อีเมลทีมงานโค้ช (Email)' : 'อีเมลผู้ปกครอง (ใช้บัญชีเดียวดูลูกได้ทุกคน)'}
-                  </label>
+                  <label className={`block text-xs font-bold mb-1 ${textMain}`}>{t.emailLabel}</label>
                   <div className="relative">
-                    <Mail className="h-4 w-4 text-slate-500 absolute left-3.5 top-3.5" />
+                    <Mail className="h-4 w-4 text-slate-400 absolute left-3.5 top-3.5" />
                     <input
                       type="email"
                       required
                       placeholder="name@example.com"
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-cyan-500 outline-none"
+                      className={`w-full border rounded-xl pl-10 pr-4 py-3 text-sm outline-none ${bgInput}`}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    รหัสผ่าน (Password อย่างน้อย 6 ตัวอักษร)
-                  </label>
+                  <label className={`block text-xs font-bold mb-1 ${textMain}`}>{t.passwordLabel}</label>
                   <input
                     type="password"
                     required
@@ -1002,14 +1203,14 @@ export default function ApexAquaEnterpriseApp() {
                     placeholder="••••••"
                     value={passwordInput}
                     onChange={(e) => setPasswordInput(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-500 outline-none"
+                    className={`w-full border rounded-xl px-4 py-3 text-sm outline-none ${bgInput}`}
                   />
                 </div>
               </>
             )}
 
             {loginError && (
-              <div className="p-3 rounded-xl bg-rose-950/70 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-500 text-xs flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{loginError}</span>
               </div>
@@ -1021,20 +1222,12 @@ export default function ApexAquaEnterpriseApp() {
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-sm shadow-lg transition-all flex items-center justify-center gap-2"
             >
               <Lock className="h-4 w-4" />
-              <span>
-                {authLoading
-                  ? 'กำลังตรวจสอบสิทธิ์...'
-                  : loginTab === 'athlete'
-                  ? 'เข้าสู่ระบบนักกีฬา'
-                  : authMode === 'signin'
-                  ? 'เข้าสู่ระบบด้วย Supabase Auth'
-                  : 'ลงทะเบียนบัญชีใหม่และเข้าใช้งาน'}
-              </span>
+              <span>{authLoading ? '...' : t.loginBtn}</span>
             </button>
           </form>
 
-          <div className="pt-3 border-t border-slate-800/80 text-center text-[11px] text-slate-500">
-            คุ้มครองข้อมูลสุขภาพเยาวชนตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)
+          <div className={`pt-3 border-t border-slate-700/20 text-center text-[11px] ${textMuted}`}>
+            {t.pdpaFooter}
           </div>
         </div>
       </div>
@@ -1042,25 +1235,25 @@ export default function ApexAquaEnterpriseApp() {
   }
 
   // ============================================================================
-  // VIEW 2: PDPA CONSENT GATE FOR YOUTH ATHLETE
+  // VIEW 2: PDPA CONSENT GATE
   // ============================================================================
   const currentAthleteObj = athletes.find((a) => a.id === currentUser.athleteId);
   if (currentUser.role === 'athlete' && currentAthleteObj && !currentAthleteObj.pdpa_signed) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-slate-900 border border-amber-700/60 rounded-3xl p-7 text-center space-y-5 shadow-2xl">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+      <div className={`min-h-screen ${bgPage} flex items-center justify-center p-4`}>
+        <div className={`max-w-md w-full border rounded-3xl p-7 text-center space-y-5 ${bgCard}`}>
+          <div className="mx-auto h-16 w-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
             <ShieldCheck className="h-9 w-9" />
           </div>
-          <h2 className="text-xl font-black text-white">รอการลงนามยินยอม PDPA จากผู้ปกครอง</h2>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            สวัสดี <b>{currentAthleteObj.nickname}</b> ต้องให้ผู้ปกครองเข้าสู่ระบบด้วยอีเมลของครอบครัวในแท็บ <b>"ผู้ปกครอง"</b> เพื่อลงนาม Digital E-Consent ก่อนจึงจะเริ่มบันทึกข้อมูลสุขภาพได้
+          <h2 className={`text-xl font-black ${textMain}`}>PDPA Parental Consent Required</h2>
+          <p className={`text-xs leading-relaxed ${textMuted}`}>
+            <b>{currentAthleteObj.nickname}</b>: Parent must sign Digital E-Consent under the Parent tab first.
           </p>
           <button
             onClick={handleLogout}
-            className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition-all"
+            className="w-full py-3 rounded-xl bg-cyan-600 text-xs font-bold text-white"
           >
-            กลับหน้าล็อกอิน
+            {t.logout}
           </button>
         </div>
       </div>
@@ -1112,66 +1305,69 @@ export default function ApexAquaEnterpriseApp() {
   const isHeadCoach = currentUser.staffPermissions?.isHeadCoach ?? false;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pb-20">
+    <div className={`min-h-screen ${bgPage} pb-20 transition-colors`}>
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3">
-        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow">
-              <Waves className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-lg text-white">ApexAqua</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-700">
-                  ENTERPRISE AUTH
-                </span>
+      <header className={`sticky top-0 z-40 backdrop-blur border-b px-4 py-3 ${isLight ? 'bg-white/95 border-slate-200' : 'bg-slate-900/95 border-slate-800'}`}>
+        <div className="max-w-6xl mx-auto flex flex-col gap-3">
+          {/* Top Row: Logo + Theme & Language Switcher */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow">
+                <Waves className="h-6 w-6" />
               </div>
-              <p className="text-[11px] text-cyan-400 font-semibold">
-                {currentUser.name}
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className={`font-black text-lg ${textMain}`}>ApexAqua</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+                    LIVE
+                  </span>
+                </div>
+                <p className="text-[11px] text-cyan-500 font-semibold">{currentUser.name}</p>
+              </div>
             </div>
+
+            {renderControlsBar()}
           </div>
 
-          {/* Navigation Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold">
+          {/* Bottom Row: Navigation Tabs */}
+          <div className={`flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl border text-xs font-bold ${bgSubCard}`}>
             {currentUser.role === 'coach' && (
               <button
                 onClick={() => setActiveTab('poolside')}
                 className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                  activeTab === 'poolside' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+                  activeTab === 'poolside' ? 'bg-cyan-600 text-white' : textMuted
                 }`}
               >
-                <Timer className="h-3.5 w-3.5" /> 1. คุมริมสระ & รายชื่อ
+                <Timer className="h-3.5 w-3.5" /> {t.tabPoolside}
               </button>
             )}
 
             <button
               onClick={() => setActiveTab('readiness')}
               className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                activeTab === 'readiness' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+                activeTab === 'readiness' ? 'bg-cyan-600 text-white' : textMuted
               }`}
             >
-              <Heart className="h-3.5 w-3.5" /> 2. เช็กอินเช้า
+              <Heart className="h-3.5 w-3.5" /> {t.tabReadiness}
             </button>
 
             <button
               onClick={() => setActiveTab('acwr_tsa')}
               className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                activeTab === 'acwr_tsa' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+                activeTab === 'acwr_tsa' ? 'bg-cyan-600 text-white' : textMuted
               }`}
             >
-              <BarChart3 className="h-3.5 w-3.5" /> 3. ACWR, ประวัติ & TSA
+              <BarChart3 className="h-3.5 w-3.5" /> {t.tabAcwr}
             </button>
 
             {(currentUser.role === 'coach' || currentUser.role === 'parent') && (
               <button
                 onClick={() => setActiveTab('pdpa')}
                 className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                  activeTab === 'pdpa' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+                  activeTab === 'pdpa' ? 'bg-cyan-600 text-white' : textMuted
                 }`}
               >
-                <ShieldCheck className="h-3.5 w-3.5" /> 4. ครอบครัว & PDPA
+                <ShieldCheck className="h-3.5 w-3.5" /> {t.tabPdpa}
               </button>
             )}
 
@@ -1179,10 +1375,10 @@ export default function ApexAquaEnterpriseApp() {
               <button
                 onClick={() => setActiveTab('builder')}
                 className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                  activeTab === 'builder' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+                  activeTab === 'builder' ? 'bg-cyan-600 text-white' : textMuted
                 }`}
               >
-                <Layers className="h-3.5 w-3.5" /> 5. จัดเซตซ้อม
+                <Layers className="h-3.5 w-3.5" /> {t.tabBuilder}
               </button>
             )}
 
@@ -1190,18 +1386,18 @@ export default function ApexAquaEnterpriseApp() {
               <button
                 onClick={() => setActiveTab('staff')}
                 className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                  activeTab === 'staff' ? 'bg-amber-600 text-white' : 'text-amber-400 hover:text-white'
+                  activeTab === 'staff' ? 'bg-amber-600 text-white' : 'text-amber-500'
                 }`}
               >
-                <UserCog className="h-3.5 w-3.5" /> 6. ทีมงานโค้ช
+                <UserCog className="h-3.5 w-3.5" /> {t.tabStaff}
               </button>
             )}
 
             <button
               onClick={handleLogout}
-              className="px-3 py-1.5 rounded-xl bg-rose-950/60 text-rose-400 hover:bg-rose-900 hover:text-white flex items-center gap-1 ml-1"
+              className="ml-auto px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-600 hover:text-white flex items-center gap-1"
             >
-              <LogOut className="h-3.5 w-3.5" /> ออก
+              <LogOut className="h-3.5 w-3.5" /> {t.logout}
             </button>
           </div>
         </div>
@@ -1209,10 +1405,10 @@ export default function ApexAquaEnterpriseApp() {
 
       {/* PARENT FAMILY MULTI-CHILD SWITCHER BAR */}
       {currentUser.role === 'parent' && parentChildrenList.length > 0 && (
-        <div className="bg-emerald-950/40 border-b border-emerald-800/60 px-4 py-2.5">
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-4 py-2.5">
           <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-emerald-400 font-bold flex items-center gap-1.5 mr-2">
-              <Baby className="h-4 w-4" /> บุตรหลานในความดูแล ({parentChildrenList.length} คน):
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5 mr-2">
+              <Baby className="h-4 w-4" /> {t.childrenLabel} ({parentChildrenList.length}):
             </span>
             {parentChildrenList.map((child) => (
               <button
@@ -1221,10 +1417,10 @@ export default function ApexAquaEnterpriseApp() {
                 className={`px-3.5 py-1.5 rounded-xl font-bold transition-all ${
                   activeParentChildId === child.id
                     ? 'bg-emerald-600 text-white shadow'
-                    : 'bg-slate-900 text-slate-300 border border-slate-700 hover:border-emerald-500'
+                    : `${bgCard} ${textMain} hover:border-emerald-500`
                 }`}
               >
-                {child.nickname || child.full_name} ({AGE_GROUP_LABELS[child.age_group]?.split(' ')[0]})
+                {child.nickname || child.full_name}
               </button>
             ))}
           </div>
@@ -1237,47 +1433,47 @@ export default function ApexAquaEnterpriseApp() {
         {/* ==================================================================== */}
         {activeTab === 'poolside' && currentUser.role === 'coach' && (
           <div className="space-y-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+            <div className={`border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 ${bgCard}`}>
               <div className="flex flex-wrap items-center gap-2">
                 {canManageAthletes && (
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
                   >
-                    <Plus className="h-4 w-4" /> เพิ่มรายชื่อนักกีฬาจริง
+                    <Plus className="h-4 w-4" /> {t.addAthleteBtn}
                   </button>
                 )}
 
-                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold ml-2">
+                <div className={`flex items-center gap-1 p-1 rounded-xl border text-xs font-bold ml-2 ${bgSubCard}`}>
                   <Filter className="h-3.5 w-3.5 text-slate-400 ml-2 mr-1" />
                   <button
                     onClick={() => setSelectedLane('all')}
-                    className={`px-2.5 py-1 rounded-lg ${selectedLane === 'all' ? 'bg-slate-800 text-cyan-400' : 'text-slate-400'}`}
+                    className={`px-2.5 py-1 rounded-lg ${selectedLane === 'all' ? 'bg-cyan-600 text-white' : textMuted}`}
                   >
-                    ทุกลู่ ({athletes.length})
+                    {t.allLanes} ({athletes.length})
                   </button>
                   {[1, 2, 3, 4].map((l) => (
                     <button
                       key={l}
                       onClick={() => setSelectedLane(l)}
-                      className={`px-2.5 py-1 rounded-lg ${selectedLane === l ? 'bg-slate-800 text-cyan-400' : 'text-slate-400'}`}
+                      className={`px-2.5 py-1 rounded-lg ${selectedLane === l ? 'bg-cyan-600 text-white' : textMuted}`}
                     >
-                      ลู่ {l}
+                      {t.lane} {l}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-                  <span className="text-slate-400">เวลาซ้อม:</span>
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs ${bgSubCard}`}>
+                  <span className={textMuted}>{t.duration}:</span>
                   <input
                     type="number"
                     value={sessionDuration}
                     onChange={(e) => setSessionDuration(Number(e.target.value))}
-                    className="w-12 bg-transparent text-center font-bold text-cyan-400 outline-none"
+                    className="w-12 bg-transparent text-center font-bold text-cyan-500 outline-none"
                   />
-                  <span className="text-slate-500">นาที</span>
+                  <span className={textMuted}>{t.mins}</span>
                 </div>
 
                 <button
@@ -1286,38 +1482,29 @@ export default function ApexAquaEnterpriseApp() {
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
                 >
                   <Save className="h-4 w-4" />
-                  <span>{savingPoolside ? 'กำลังบันทึก...' : 'บันทึกคะแนนทั้งสระ'}</span>
+                  <span>{savingPoolside ? '...' : t.saveAllPool}</span>
                 </button>
               </div>
             </div>
 
             {poolsideMsg && (
-              <div
-                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
-                  poolsideMsg.type === 'ok'
-                    ? 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
-                    : 'bg-rose-950/70 border-rose-800 text-rose-300'
-                }`}
-              >
+              <div className="p-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-500 text-xs flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span>{poolsideMsg.text}</span>
               </div>
             )}
 
             {!loadingData && athletes.length === 0 ? (
-              <div className="bg-slate-900 border border-dashed border-slate-700 rounded-3xl p-12 text-center space-y-3">
-                <Users className="h-12 w-12 text-slate-600 mx-auto" />
-                <h3 className="text-lg font-bold text-white">ยังไม่มีรายชื่อนักกีฬาในระบบ</h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  กดปุ่ม <b>"+ เพิ่มรายชื่อนักกีฬาจริง"</b> ด้านบนเพื่อลงทะเบียนนักกีฬาพร้อมระบุอีเมลผู้ปกครองได้เลยครับ
-                </p>
+              <div className={`border-2 border-dashed rounded-3xl p-12 text-center space-y-3 ${bgCard}`}>
+                <Users className="h-12 w-12 text-slate-400 mx-auto" />
+                <h3 className={`text-lg font-bold ${textMain}`}>No Athletes Registered Yet</h3>
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredPoolside.map((row) => (
                   <div
                     key={row.id}
-                    className={`bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all ${
+                    className={`border rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all ${bgCard} ${
                       !row.attended && 'opacity-50'
                     }`}
                   >
@@ -1329,28 +1516,28 @@ export default function ApexAquaEnterpriseApp() {
                           )
                         }
                         className={`h-8 w-8 rounded-xl font-black text-sm flex items-center justify-center ${
-                          row.attended ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-500'
+                          row.attended ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
                         }`}
                       >
                         ✓
                       </button>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-800 text-cyan-400">
-                            ลู่ {row.lane}
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-500">
+                            {t.lane} {row.lane}
                           </span>
-                          <span className="font-bold text-sm text-white">
+                          <span className={`font-bold text-sm ${textMain}`}>
                             {row.full_name} ({row.nickname})
                           </span>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                        <div className={`flex flex-wrap items-center gap-2 text-[11px] mt-0.5 ${textMuted}`}>
                           <span>{AGE_GROUP_LABELS[row.age_group] || row.age_group}</span>
                           <span>• PIN: {row.pin_code}</span>
-                          {row.parent_email && <span className="text-cyan-400">• ผู้ปกครอง: {row.parent_email}</span>}
+                          {row.parent_email && <span className="text-cyan-500">• {row.parent_email}</span>}
                           {row.pdpa_signed ? (
-                            <span className="text-emerald-400 font-bold">• PDPA ✓</span>
+                            <span className="text-emerald-500 font-bold">• PDPA ✓</span>
                           ) : (
-                            <span className="text-amber-400">• รอ PDPA</span>
+                            <span className="text-amber-500">• Pending PDPA</span>
                           )}
                         </div>
                       </div>
@@ -1358,10 +1545,10 @@ export default function ApexAquaEnterpriseApp() {
 
                     <div className="flex-1 max-w-lg">
                       <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-slate-400">
-                          ความเหนื่อย sRPE: <b className="text-cyan-400">{row.attended ? `${row.srpe}/10` : '-'}</b>
+                        <span className={textMuted}>
+                          {t.srpeLabel}: <b className="text-cyan-500">{row.attended ? `${row.srpe}/10` : '-'}</b>
                         </span>
-                        <span className="font-bold text-amber-400">
+                        <span className="font-bold text-amber-500">
                           Session Load: {row.attended ? row.srpe * sessionDuration : 0} AU
                         </span>
                       </div>
@@ -1382,6 +1569,8 @@ export default function ApexAquaEnterpriseApp() {
                                   : num >= 5
                                   ? 'bg-amber-500 text-white'
                                   : 'bg-cyan-600 text-white'
+                                : isLight
+                                ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                             }`}
                           >
@@ -1394,8 +1583,7 @@ export default function ApexAquaEnterpriseApp() {
                     {canManageAthletes && (
                       <button
                         onClick={() => handleDeleteAthlete(row.id, row.full_name)}
-                        className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 self-end lg:self-center"
-                        title="ลบรายชื่อนักกีฬา"
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-500 self-end lg:self-center"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -1405,74 +1593,71 @@ export default function ApexAquaEnterpriseApp() {
               </div>
             )}
 
-            {/* Add Athlete Modal with Parent Email Link */}
+            {/* Add Athlete Modal */}
             {showAddModal && (
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-                  <h3 className="text-lg font-black text-white">เพิ่มรายชื่อนักกีฬาจริงเข้าสโมสร</h3>
+                <div className={`border rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl ${bgCard}`}>
+                  <h3 className={`text-lg font-black ${textMain}`}>{t.addAthleteBtn}</h3>
                   <form onSubmit={handleAddAthlete} className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-slate-400 mb-1">ชื่อ - นามสกุลจริง *</label>
+                      <label className={`block mb-1 ${textMuted}`}>Full Name *</label>
                       <input
                         required
                         type="text"
-                        placeholder="เช่น ด.ช. ธนกฤต ใจดี"
                         value={newAthlete.full_name}
                         onChange={(e) => setNewAthlete({ ...newAthlete, full_name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                        className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 mb-1">ชื่อเล่น</label>
+                        <label className={`block mb-1 ${textMuted}`}>Nickname</label>
                         <input
                           type="text"
-                          placeholder="เช่น น้องกฤต"
                           value={newAthlete.nickname}
                           onChange={(e) => setNewAthlete({ ...newAthlete, nickname: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 mb-1">เพศ</label>
+                        <label className={`block mb-1 ${textMuted}`}>Gender</label>
                         <select
                           value={newAthlete.gender}
                           onChange={(e) =>
                             setNewAthlete({ ...newAthlete, gender: e.target.value as 'Male' | 'Female' })
                           }
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
                         >
-                          <option value="Male">ชาย (Male)</option>
-                          <option value="Female">หญิง (Female)</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
                         </select>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 mb-1">กลุ่มอายุ (TSA Group)</label>
+                        <label className={`block mb-1 ${textMuted}`}>Age Group</label>
                         <select
                           value={newAthlete.age_group}
                           onChange={(e) => setNewAthlete({ ...newAthlete, age_group: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
                         >
-                          <option value="group_5">กลุ่ม 5 (7–9 ปี)</option>
-                          <option value="group_4">กลุ่ม 4 (10–11 ปี)</option>
-                          <option value="group_3">กลุ่ม 3 (12–13 ปี)</option>
-                          <option value="group_2">กลุ่ม 2 (14–15 ปี)</option>
-                          <option value="group_1">กลุ่ม 1 (16–18 ปี)</option>
-                          <option value="open">รุ่นทั่วไป (Open)</option>
+                          {Object.entries(AGE_GROUP_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>
+                              {v}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-slate-400 mb-1">ลู่ว่ายประจำ (Lane)</label>
+                        <label className={`block mb-1 ${textMuted}`}>{t.lane}</label>
                         <select
                           value={newAthlete.lane}
                           onChange={(e) => setNewAthlete({ ...newAthlete, lane: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
                         >
                           {[1, 2, 3, 4, 5, 6].map((l) => (
                             <option key={l} value={l}>
-                              ลู่ {l}
+                              {t.lane} {l}
                             </option>
                           ))}
                         </select>
@@ -1480,53 +1665,50 @@ export default function ApexAquaEnterpriseApp() {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 mb-1">ชื่อผู้ปกครอง</label>
+                        <label className={`block mb-1 ${textMuted}`}>Parent Name</label>
                         <input
                           type="text"
-                          placeholder="เช่น คุณแม่นิดา"
                           value={newAthlete.parent_name}
                           onChange={(e) => setNewAthlete({ ...newAthlete, parent_name: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 mb-1">ตั้งรหัส PIN นักกีฬา</label>
+                        <label className={`block mb-1 ${textMuted}`}>Athlete PIN (4 Digits)</label>
                         <input
                           type="text"
                           maxLength={4}
                           value={newAthlete.pin_code}
                           onChange={(e) => setNewAthlete({ ...newAthlete, pin_code: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                          className={`w-full border rounded-xl px-3 py-2.5 font-mono ${bgInput}`}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-cyan-400 font-bold mb-1">
-                        อีเมลผู้ปกครอง (ใช้อีเมลเดียวกันหากมีลูก 2–3 คนในบ้าน) *
-                      </label>
+                      <label className="block text-cyan-500 font-bold mb-1">Parent Email (Family Account) *</label>
                       <input
                         required
                         type="email"
                         placeholder="parent@example.com"
                         value={newAthlete.parent_email}
                         onChange={(e) => setNewAthlete({ ...newAthlete, parent_email: e.target.value })}
-                        className="w-full bg-slate-950 border border-cyan-800 rounded-xl px-3 py-2.5 text-white"
+                        className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
                       />
                     </div>
                     <div className="flex justify-end gap-2 pt-3">
                       <button
                         type="button"
                         onClick={() => setShowAddModal(false)}
-                        className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold"
+                        className="px-4 py-2 rounded-xl bg-slate-200 text-slate-800 font-bold"
                       >
-                        ยกเลิก
+                        Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={addingAthlete}
-                        className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold"
+                        className="px-5 py-2 rounded-xl bg-cyan-600 text-white font-bold"
                       >
-                        {addingAthlete ? 'กำลังบันทึก...' : 'บันทึกรายชื่อ'}
+                        Save
                       </button>
                     </div>
                   </form>
@@ -1542,22 +1724,22 @@ export default function ApexAquaEnterpriseApp() {
         {activeTab === 'readiness' && (
           <form
             onSubmit={handleSaveReadiness}
-            className="max-w-2xl mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl"
+            className={`max-w-2xl mx-auto border rounded-3xl p-6 space-y-5 ${bgCard}`}
           >
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-500">
                 Pre-Training Readiness
               </span>
-              <h2 className="text-xl font-black text-white">เช็กอินความพร้อมร่างกายตอนเช้า</h2>
+              <h2 className={`text-xl font-black ${textMain}`}>{t.readinessTitle}</h2>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">นักกีฬา</label>
+              <label className={`block text-xs font-bold mb-1.5 ${textMain}`}>{t.selectAthlete}</label>
               <select
                 value={readinessAthleteId}
                 onChange={(e) => setReadinessAthleteId(e.target.value)}
                 disabled={currentUser.role !== 'coach'}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white"
+                className={`w-full border rounded-xl px-4 py-3 text-sm ${bgInput}`}
               >
                 {visibleAthletesForRole.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -1568,10 +1750,10 @@ export default function ApexAquaEnterpriseApp() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+              <div className={`p-4 rounded-2xl border ${bgSubCard}`}>
                 <div className="flex justify-between text-xs mb-2">
-                  <span className="text-slate-400">ชีพจรขณะพัก (RHR)</span>
-                  <span className="font-black text-rose-400">{rhr} bpm</span>
+                  <span className={textMuted}>{t.rhrLabel}</span>
+                  <span className="font-black text-rose-500">{rhr} bpm</span>
                 </div>
                 <input
                   type="range"
@@ -1583,10 +1765,12 @@ export default function ApexAquaEnterpriseApp() {
                 />
               </div>
 
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+              <div className={`p-4 rounded-2xl border ${bgSubCard}`}>
                 <div className="flex justify-between text-xs mb-2">
-                  <span className="text-slate-400">ชั่วโมงการนอนหลับ</span>
-                  <span className="font-black text-cyan-400">{sleepHours} ชม.</span>
+                  <span className={textMuted}>{t.sleepLabel}</span>
+                  <span className="font-black text-cyan-500">
+                    {sleepHours} {t.hrs}
+                  </span>
                 </div>
                 <input
                   type="range"
@@ -1601,23 +1785,21 @@ export default function ApexAquaEnterpriseApp() {
             </div>
 
             <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-300 block">
-                แผนที่ความตึงกล้ามเนื้อ 5 จุด (1 = ปกติ, 5 = ตึงมาก/เจ็บ)
-              </span>
+              <span className={`text-xs font-bold block ${textMain}`}>{t.sorenessTitle}</span>
               {(
                 [
-                  { key: 'shoulder', label: '1. ข้อต่อหัวไหล่ (Rotator Cuff)' },
-                  { key: 'lat', label: '2. กล้ามเนื้อปีกและหลัง (Latissimus Dorsi)' },
-                  { key: 'core', label: '3. แกนกลางลำตัว (Core & Lower Back)' },
-                  { key: 'knee', label: '4. หัวเข่าและขาหนีบ (Breaststroke Knee)' },
-                  { key: 'ankle', label: '5. ข้อเท้าและหลังเท้า (Ankle Flexibility)' },
+                  { key: 'shoulder', label: '1. Shoulder (Rotator Cuff)' },
+                  { key: 'lat', label: '2. Back / Latissimus Dorsi' },
+                  { key: 'core', label: '3. Core & Lower Back' },
+                  { key: 'knee', label: '4. Knee & Adductors' },
+                  { key: 'ankle', label: '5. Ankle & Calves' },
                 ] as const
               ).map((part) => (
                 <div
                   key={part.key}
-                  className="flex items-center justify-between bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800"
+                  className={`flex items-center justify-between px-4 py-2.5 rounded-xl border ${bgSubCard}`}
                 >
-                  <span className="text-xs text-slate-300">{part.label}</span>
+                  <span className={`text-xs ${textMain}`}>{part.label}</span>
                   <div className="flex gap-1">
                     {[1, 2, 3, 4, 5].map((lvl) => (
                       <button
@@ -1631,6 +1813,8 @@ export default function ApexAquaEnterpriseApp() {
                               : lvl === 3
                               ? 'bg-amber-500 text-white'
                               : 'bg-emerald-600 text-white'
+                            : isLight
+                            ? 'bg-slate-200 text-slate-700'
                             : 'bg-slate-800 text-slate-400'
                         }`}
                       >
@@ -1643,7 +1827,7 @@ export default function ApexAquaEnterpriseApp() {
             </div>
 
             {readinessMsg && (
-              <div className="p-3 rounded-xl bg-emerald-950/70 border border-emerald-800 text-emerald-300 text-xs">
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 text-emerald-500 text-xs">
                 {readinessMsg.text}
               </div>
             )}
@@ -1653,7 +1837,7 @@ export default function ApexAquaEnterpriseApp() {
               disabled={savingReadiness || visibleAthletesForRole.length === 0}
               className="w-full py-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm shadow-lg"
             >
-              {savingReadiness ? 'กำลังบันทึก...' : 'ส่งข้อมูลความพร้อมเช้า'}
+              {savingReadiness ? '...' : t.submitReadiness}
             </button>
           </form>
         )}
@@ -1666,16 +1850,16 @@ export default function ApexAquaEnterpriseApp() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <span className="text-[10px] font-bold uppercase text-amber-400">
+                  <span className="text-[10px] font-bold uppercase text-amber-500">
                     Real-time Workload & Injury Prevention
                   </span>
-                  <h2 className="text-xl font-black text-white">ดัชนีภาระงานสะสม ACWR (7 วัน / 28 วัน)</h2>
+                  <h2 className={`text-xl font-black ${textMain}`}>{t.acwrTitle}</h2>
                 </div>
                 <button
                   onClick={fetchAllData}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-cyan-400 flex items-center gap-1.5"
+                  className={`px-3.5 py-2 rounded-xl border text-xs font-bold text-cyan-500 flex items-center gap-1.5 ${bgCard}`}
                 >
-                  <RefreshCw className="h-3.5 w-3.5" /> รีเฟรชข้อมูลจริง
+                  <RefreshCw className="h-3.5 w-3.5" /> {t.refreshBtn}
                 </button>
               </div>
 
@@ -1686,48 +1870,34 @@ export default function ApexAquaEnterpriseApp() {
                   return (
                     <div
                       key={item.athlete.id}
-                      className={`bg-slate-900 border rounded-2xl p-5 space-y-3 ${
-                        isDanger
-                          ? 'border-rose-700'
-                          : isWarn
-                          ? 'border-amber-700'
-                          : 'border-slate-800'
+                      className={`border rounded-2xl p-5 space-y-3 ${bgCard} ${
+                        isDanger ? 'border-rose-500' : isWarn ? 'border-amber-500' : ''
                       }`}
                     >
                       <div className="flex justify-between items-start">
                         <div>
-                          <h3 className="font-bold text-base text-white">
+                          <h3 className={`font-bold text-base ${textMain}`}>
                             {item.athlete.full_name} ({item.athlete.nickname})
                           </h3>
-                          <span className="text-xs text-slate-400">
-                            ซ้อมรอบ 28 วัน: {item.sessionCount28d} ครั้ง
-                          </span>
+                          <span className={`text-xs ${textMuted}`}>28d Sessions: {item.sessionCount28d}</span>
                         </div>
                         <div className="text-right">
                           <span
                             className={`text-2xl font-black ${
-                              isDanger
-                                ? 'text-rose-400'
-                                : isWarn
-                                ? 'text-amber-400'
-                                : 'text-emerald-400'
+                              isDanger ? 'text-rose-500' : isWarn ? 'text-amber-500' : 'text-emerald-500'
                             }`}
                           >
                             {item.acwr.toFixed(2)}
                           </span>
-                          <span className="block text-[10px] font-bold text-slate-400">
-                            {isDanger
-                              ? 'Danger Zone (≥1.50)'
-                              : isWarn
-                              ? 'Early Warning (1.31-1.49)'
-                              : 'Sweet Spot (0.80-1.30)'}
+                          <span className={`block text-[10px] font-bold ${textMuted}`}>
+                            {isDanger ? 'Danger Zone' : isWarn ? 'Early Warning' : 'Sweet Spot'}
                           </span>
                         </div>
                       </div>
-                      <div className="flex justify-between text-xs text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800">
-                        <span>Acute (7 วัน): <b className="text-cyan-400">{item.acuteLoad} AU</b></span>
-                        <span>Chronic (28 วัน): <b className="text-white">{item.chronicLoad} AU</b></span>
-                        <span>RHR: <b className="text-rose-400">{item.latestRhr ?? '-'} bpm</b></span>
+                      <div className={`flex justify-between text-xs p-3 rounded-xl border ${bgSubCard} ${textMuted}`}>
+                        <span>Acute (7d): <b className="text-cyan-500">{item.acuteLoad} AU</b></span>
+                        <span>Chronic (28d): <b className={textMain}>{item.chronicLoad} AU</b></span>
+                        <span>RHR: <b className="text-rose-500">{item.latestRhr ?? '-'} bpm</b></span>
                       </div>
                     </div>
                   );
@@ -1735,58 +1905,58 @@ export default function ApexAquaEnterpriseApp() {
               </div>
             </div>
 
-            {/* Daily Training History Table + Export CSV */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            {/* Daily Training History Table */}
+            <div className={`border rounded-3xl p-6 space-y-4 ${bgCard}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase text-emerald-500 flex items-center gap-1">
                     <Calendar className="h-3.5 w-3.5" /> Daily Training Audit Logs
                   </span>
-                  <h2 className="text-lg font-black text-white">ตารางประวัติการซ้อมย้อนหลังรายวัน</h2>
+                  <h2 className={`text-lg font-black ${textMain}`}>{t.historyTitle}</h2>
                 </div>
                 <button
                   onClick={handleExportHistoryCsv}
                   disabled={visibleHistoryLogs.length === 0}
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 shadow"
                 >
-                  <Download className="h-4 w-4" /> ดาวน์โหลดไฟล์ Excel (CSV)
+                  <Download className="h-4 w-4" /> {t.exportCsvBtn}
                 </button>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-800">
+              <div className="overflow-x-auto rounded-2xl border border-slate-700/30">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                  <thead className={`border-b border-slate-700/30 ${bgSubCard} ${textMuted}`}>
                     <tr>
-                      <th className="py-3 px-4">วันที่ซ้อม</th>
-                      <th className="py-3 px-4">ชื่อนักกีฬา</th>
-                      <th className="py-3 px-4 text-center">ระยะเวลา (นาที)</th>
-                      <th className="py-3 px-4 text-center">ระดับเหนื่อย (sRPE)</th>
-                      <th className="py-3 px-4 text-right">ภาระงานรวม (AU)</th>
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4">Athlete</th>
+                      <th className="py-3 px-4 text-center">{t.duration}</th>
+                      <th className="py-3 px-4 text-center">sRPE</th>
+                      <th className="py-3 px-4 text-right">Load (AU)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/70 bg-slate-900/50">
+                  <tbody className="divide-y divide-slate-700/20">
                     {visibleHistoryLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-500">
-                          ยังไม่มีประวัติการบันทึกการฝึกซ้อมในฐานข้อมูล
+                        <td colSpan={5} className={`py-8 text-center ${textMuted}`}>
+                          No training logs recorded yet.
                         </td>
                       </tr>
                     ) : (
                       visibleHistoryLogs.slice(0, 20).map((log) => {
                         const ath = athletes.find((a) => a.id === log.athlete_id);
                         return (
-                          <tr key={log.id} className="hover:bg-slate-800/40">
-                            <td className="py-3 px-4 font-mono text-slate-300">{log.workout_date}</td>
-                            <td className="py-3 px-4 font-bold text-white">
-                              {ath ? `${ath.full_name} (${ath.nickname})` : 'นักกีฬา'}
+                          <tr key={log.id}>
+                            <td className={`py-3 px-4 font-mono ${textMuted}`}>{log.workout_date}</td>
+                            <td className={`py-3 px-4 font-bold ${textMain}`}>
+                              {ath ? `${ath.full_name} (${ath.nickname})` : '-'}
                             </td>
-                            <td className="py-3 px-4 text-center text-slate-300">{log.duration_minutes} นาที</td>
+                            <td className={`py-3 px-4 text-center ${textMuted}`}>{log.duration_minutes}</td>
                             <td className="py-3 px-4 text-center">
-                              <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 font-bold">
+                              <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-500 font-bold">
                                 {log.srpe} / 10
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-right font-black text-amber-400">
+                            <td className="py-3 px-4 text-right font-black text-amber-500">
                               {log.session_load_au} AU
                             </td>
                           </tr>
@@ -1799,15 +1969,13 @@ export default function ApexAquaEnterpriseApp() {
             </div>
 
             {/* TSA Benchmark 50m / 25m + CSV Import */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div className={`border rounded-3xl p-6 space-y-5 ${bgCard}`}>
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700/20 pb-4">
                 <div>
-                  <span className="text-[10px] font-bold uppercase text-cyan-400 flex items-center gap-1">
-                    <Trophy className="h-3.5 w-3.5" /> Thailand Swimming Association (TSA) Benchmark 2026
+                  <span className="text-[10px] font-bold uppercase text-cyan-500 flex items-center gap-1">
+                    <Trophy className="h-3.5 w-3.5" /> TSA Benchmark 2026
                   </span>
-                  <h2 className="text-xl font-black text-white mt-0.5">
-                    ฐานข้อมูลเกณฑ์เวลาสมาคมฯ (สระ 50m & แปลงสระ 25m อัตโนมัติ)
-                  </h2>
+                  <h2 className={`text-xl font-black mt-0.5 ${textMain}`}>{t.tsaTitle}</h2>
                 </div>
 
                 {currentUser.role === 'coach' && (
@@ -1815,9 +1983,9 @@ export default function ApexAquaEnterpriseApp() {
                     <button
                       type="button"
                       onClick={handleDownloadSampleCsv}
-                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5"
+                      className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 ${bgSubCard} ${textMain}`}
                     >
-                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" /> โหลดไฟล์ตัวอย่าง CSV
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500" /> {t.downloadTemplate}
                     </button>
                     <input
                       ref={fileInputRef}
@@ -1833,16 +2001,15 @@ export default function ApexAquaEnterpriseApp() {
                       className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow"
                     >
                       <Upload className="h-3.5 w-3.5" />
-                      <span>{importingCsv ? 'กำลังนำเข้า...' : 'อัปโหลดเกณฑ์ 50m (CSV)'}</span>
+                      <span>{importingCsv ? '...' : t.uploadCsv}</span>
                     </button>
                   </div>
                 )}
               </div>
 
               {csvImportMsg && (
-                <div className="p-3 rounded-xl bg-emerald-950/70 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  <span>{csvImportMsg}</span>
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 text-emerald-500 text-xs">
+                  {csvImportMsg}
                 </div>
               )}
 
@@ -1851,7 +2018,7 @@ export default function ApexAquaEnterpriseApp() {
                   value={selectedBenchmarkAthleteId}
                   onChange={(e) => setSelectedBenchmarkAthleteId(e.target.value)}
                   disabled={currentUser.role !== 'coach'}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white"
+                  className={`border rounded-xl px-3 py-2 text-xs font-bold ${bgInput}`}
                 >
                   {visibleAthletesForRole.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -1860,70 +2027,66 @@ export default function ApexAquaEnterpriseApp() {
                   ))}
                 </select>
 
-                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+                <div className={`flex p-1 rounded-xl border text-xs font-bold ${bgSubCard}`}>
                   <button
                     onClick={() => setTsaCourse('50m')}
-                    className={`px-3 py-1.5 rounded-lg ${
-                      tsaCourse === '50m' ? 'bg-cyan-600 text-white' : 'text-slate-400'
-                    }`}
+                    className={`px-3 py-1.5 rounded-lg ${tsaCourse === '50m' ? 'bg-cyan-600 text-white' : textMuted}`}
                   >
-                    สระ 50m (ทางการ)
+                    {t.course50}
                   </button>
                   <button
                     onClick={() => setTsaCourse('25m')}
-                    className={`px-3 py-1.5 rounded-lg ${
-                      tsaCourse === '25m' ? 'bg-cyan-600 text-white' : 'text-slate-400'
-                    }`}
+                    className={`px-3 py-1.5 rounded-lg ${tsaCourse === '25m' ? 'bg-cyan-600 text-white' : textMuted}`}
                   >
-                    สระ 25m (เกณฑ์แปลงมาตรฐาน)
+                    {t.course25}
                   </button>
                 </div>
               </div>
 
               <form
                 onSubmit={handleAddCompTime}
-                className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-xs"
+                className={`grid grid-cols-1 sm:grid-cols-5 gap-2 p-3.5 rounded-2xl border text-xs ${bgSubCard}`}
               >
                 <input
                   type="text"
-                  placeholder="ชื่อรายการแข่งขัน"
+                  placeholder="Meet Name"
                   value={newComp.meet_name}
                   onChange={(e) => setNewComp({ ...newComp, meet_name: e.target.value })}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  className={`border rounded-xl px-3 py-2 ${bgInput}`}
                 />
                 <select
                   value={newComp.stroke}
                   onChange={(e) => setNewComp({ ...newComp, stroke: e.target.value })}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  className={`border rounded-xl px-3 py-2 ${bgInput}`}
                 >
-                  <option value="Freestyle">Freestyle (ฟรีสไตล์)</option>
-                  <option value="Backstroke">Backstroke (กรรเชียง)</option>
-                  <option value="Breaststroke">Breaststroke (กบ)</option>
-                  <option value="Butterfly">Butterfly (ผีเสื้อ)</option>
+                  <option value="Freestyle">Freestyle</option>
+                  <option value="Backstroke">Backstroke</option>
+                  <option value="Breaststroke">Breaststroke</option>
+                  <option value="Butterfly">Butterfly</option>
                 </select>
                 <select
                   value={newComp.distance_m}
                   onChange={(e) => setNewComp({ ...newComp, distance_m: Number(e.target.value) })}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  className={`border rounded-xl px-3 py-2 ${bgInput}`}
                 >
-                  <option value={50}>50 เมตร</option>
-                  <option value={100}>100 เมตร</option>
-                  <option value={200}>200 เมตร</option>
+                  <option value={50}>50m</option>
+                  <option value={100}>100m</option>
+                  <option value={200}>200m</option>
                 </select>
                 <input
                   type="number"
                   step="0.01"
                   required
-                  placeholder="เวลาที่ทำได้ (วินาที เช่น 31.20)"
+                  placeholder="Seconds (e.g. 31.20)"
                   value={newComp.official_time_sec}
                   onChange={(e) => setNewComp({ ...newComp, official_time_sec: e.target.value })}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  className={`border rounded-xl px-3 py-2 ${bgInput}`}
                 />
                 <button
                   type="submit"
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl py-2 px-3"
                 >
-                  + บันทึกสถิติ PB
+                  {t.addPbBtn}
                 </button>
               </form>
 
@@ -1941,40 +2104,37 @@ export default function ApexAquaEnterpriseApp() {
                   const delta = bestPb !== null ? Number((bestPb - std.qualifying_time_sec).toFixed(2)) : null;
 
                   return (
-                    <div
-                      key={std.id}
-                      className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3"
-                    >
+                    <div key={std.id} className={`border rounded-2xl p-4 space-y-3 ${bgSubCard}`}>
                       <div className="flex justify-between items-center">
                         <div>
-                          <h4 className="font-bold text-sm text-white">
+                          <h4 className={`font-bold text-sm ${textMain}`}>
                             {std.stroke} {std.distance_m}m ({std.course})
                           </h4>
-                          <span className="text-[10px] text-cyan-400">{std.source_notes}</span>
+                          <span className="text-[10px] text-cyan-500">{std.source_notes}</span>
                         </div>
                         {delta !== null && (
                           <span
                             className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
                               delta <= 0
-                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-700'
-                                : 'bg-amber-950 text-amber-400 border border-amber-700'
+                                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/40'
+                                : 'bg-amber-500/10 text-amber-500 border border-amber-500/40'
                             }`}
                           >
-                            {delta <= 0 ? `ผ่านเกณฑ์ (${delta} วิ)` : `ขาดอีก +${delta} วิ`}
+                            {delta <= 0 ? `Qualified (${delta}s)` : `+${delta}s`}
                           </span>
                         )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                        <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-                          <span className="text-slate-500 block text-[10px]">สถิติ PB ปัจจุบัน</span>
-                          <b className="text-base text-cyan-400">
-                            {bestPb !== null ? `${bestPb.toFixed(2)} วิ` : 'ยังไม่มีสถิติ'}
+                        <div className={`p-2.5 rounded-xl border ${bgCard}`}>
+                          <span className={`block text-[10px] ${textMuted}`}>Current PB</span>
+                          <b className="text-base text-cyan-500">
+                            {bestPb !== null ? `${bestPb.toFixed(2)}s` : '-'}
                           </b>
                         </div>
-                        <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-                          <span className="text-slate-500 block text-[10px]">เกณฑ์เป้าหมาย TSA</span>
-                          <b className="text-base text-white">{std.qualifying_time_sec.toFixed(2)} วิ</b>
+                        <div className={`p-2.5 rounded-xl border ${bgCard}`}>
+                          <span className={`block text-[10px] ${textMuted}`}>TSA Target</span>
+                          <b className={`text-base ${textMain}`}>{std.qualifying_time_sec.toFixed(2)}s</b>
                         </div>
                       </div>
                     </div>
@@ -1990,61 +2150,51 @@ export default function ApexAquaEnterpriseApp() {
         {/* ==================================================================== */}
         {activeTab === 'pdpa' && (
           <div className="max-w-3xl mx-auto space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <div className={`border rounded-3xl p-6 space-y-4 ${bgCard}`}>
               <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-2xl bg-emerald-600/20 border border-emerald-600/40 flex items-center justify-center text-emerald-400">
+                <div className="h-11 w-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500">
                   <FileSignature className="h-6 w-6" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-black text-white">
-                    แบบฟอร์มลงนามยินยอมข้อมูลสุขภาพเยาวชน (PDPA Digital E-Consent)
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    ตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 สำหรับจัดเก็บข้อมูล RHR, การนอนหลับ และสถิติการฝึกซ้อม
-                  </p>
+                  <h2 className={`text-lg font-black ${textMain}`}>{t.pdpaTitle}</h2>
                 </div>
               </div>
 
               <form onSubmit={handleSignPdpa} className="space-y-4 pt-2">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">นักกีฬาในความดูแล</label>
+                  <label className={`block text-xs font-bold mb-1 ${textMain}`}>{t.selectAthlete}</label>
                   <select
                     value={pdpaTargetAthleteId}
                     onChange={(e) => setPdpaTargetAthleteId(e.target.value)}
                     disabled={currentUser.role === 'parent'}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"
+                    className={`w-full border rounded-xl px-4 py-2.5 text-sm ${bgInput}`}
                   >
                     {visibleAthletesForRole.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.full_name} ({a.nickname}) - สถานะ: {a.pdpa_signed ? 'ลงนามแล้ว ✓' : 'รอลงนาม'}
+                        {a.full_name} ({a.nickname}) - {a.pdpa_signed ? 'Signed ✓' : 'Pending'}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 space-y-2 leading-relaxed">
-                  <p className="font-bold text-cyan-400">ข้อตกลงการคุ้มครองข้อมูลส่วนบุคคล (ฉบับย่อ v2.2):</p>
+                <div className={`border rounded-2xl p-4 text-xs space-y-2 leading-relaxed ${bgSubCard} ${textMuted}`}>
+                  <p className="font-bold text-cyan-500">PDPA Youth Health Consent v2.2:</p>
                   <p>
-                    1. สโมสรจะนำข้อมูลความพร้อมทางร่างกาย (RHR, ชั่วโมงการนอน, ความตึงกล้ามเนื้อ) และภาระงานฝึกซ้อม 
-                    ไปใช้เพื่อวางแผนการฝึกซ้อมและป้องกันการบาดเจ็บของนักกีฬาเท่านั้น
+                    1. Physiological readiness (RHR, sleep hours, muscle soreness) and training workload data are collected solely for athlete safety and performance planning.
                   </p>
                   <p>
-                    2. ข้อมูลทั้งหมดถูกเข้ารหัสและจำกัดสิทธิ์การเข้าถึง (Row Level Security) เฉพาะทีมงานผู้ฝึกสอน 
-                    นักกีฬาเจ้าของข้อมูล และผู้ปกครองที่ลงนามเท่านั้น
+                    2. All records are protected by Row Level Security (RLS) accessible only to authorized club coaches and the signing parent/guardian.
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    ลงชื่อ-นามสกุล บิดา / มารดา / ผู้ปกครองตามกฎหมาย *
-                  </label>
+                  <label className={`block text-xs font-bold mb-1 ${textMain}`}>Parent / Legal Guardian Full Name *</label>
                   <input
                     required
                     type="text"
-                    placeholder="พิมพ์ชื่อ-นามสกุลผู้ปกครองเพื่อยืนยันการลงนามดิจิทัล"
                     value={parentSignerName}
                     onChange={(e) => setParentSignerName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white"
+                    className={`w-full border rounded-xl px-4 py-3 text-sm ${bgInput}`}
                   />
                 </div>
 
@@ -2052,7 +2202,7 @@ export default function ApexAquaEnterpriseApp() {
                   type="submit"
                   className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg"
                 >
-                  ยืนยันและลงนาม PDPA Digital E-Consent
+                  {t.signPdpaBtn}
                 </button>
               </form>
             </div>
@@ -2060,37 +2210,28 @@ export default function ApexAquaEnterpriseApp() {
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 5: WORKOUT BUILDER (UNLIMITED GROUPS & ITEMS + RBAC GUARD)       */}
+        {/* TAB 5: WORKOUT BUILDER                                               */}
         {/* ==================================================================== */}
         {activeTab === 'builder' && currentUser.role === 'coach' && (
           <div className="space-y-4">
-            {!canEditWorkouts && (
-              <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-700 text-amber-300 text-xs flex items-center gap-2">
-                <Lock className="h-4 w-4 shrink-0" />
-                <span>
-                  บัญชีของคุณอยู่ในโหมด <b>ผู้ช่วยโค้ช (View Only)</b> สามารถดูโปรแกรมซ้อมได้ แต่ไม่สามารถบันทึกแก้ไขได้ (ติดต่อหัวหน้าโค้ชเพื่อขอสิทธิ์)
-                </span>
-              </div>
-            )}
-
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <div className={`border rounded-3xl p-6 space-y-4 ${bgCard}`}>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <span className="text-[10px] font-bold uppercase text-cyan-400">
+                  <span className="text-[10px] font-bold uppercase text-cyan-500">
                     Nested Sets & Auto-Zone Engine
                   </span>
-                  <h2 className="text-xl font-black text-white">ระบบสร้างโปรแกรมฝึกซ้อมอัจฉริยะ</h2>
+                  <h2 className={`text-xl font-black ${textMain}`}>{t.builderTitle}</h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-xs">
-                    <span className="text-slate-400">CSS 100m ฐาน: </span>
+                  <div className={`border px-3 py-2 rounded-xl text-xs ${bgSubCard}`}>
+                    <span className={textMuted}>CSS 100m: </span>
                     <input
                       type="number"
                       value={css100m}
                       onChange={(e) => setCss100m(Number(e.target.value))}
-                      className="w-12 bg-transparent text-center font-bold text-cyan-400 outline-none"
+                      className="w-12 bg-transparent text-center font-bold text-cyan-500 outline-none"
                     />
-                    <span className="text-slate-400"> วิ</span>
+                    <span className={textMuted}>s</span>
                   </div>
                   {canEditWorkouts && (
                     <button
@@ -2098,34 +2239,34 @@ export default function ApexAquaEnterpriseApp() {
                       disabled={savingWorkout}
                       className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"
                     >
-                      <Save className="h-4 w-4" /> บันทึกโปรแกรมซ้อมลง Supabase
+                      <Save className="h-4 w-4" /> {t.saveWorkoutBtn}
                     </button>
                   )}
                 </div>
               </div>
 
               {workoutMsg && (
-                <div className="p-3 rounded-xl bg-emerald-950/70 border border-emerald-800 text-emerald-300 text-xs">
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 text-emerald-500 text-xs">
                   {workoutMsg}
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-2xl border border-slate-800">
+              <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-2xl border ${bgSubCard}`}>
                 <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">ชื่อโปรแกรมฝึกซ้อม</label>
+                  <label className={`text-[11px] block mb-1 ${textMuted}`}>Workout Title</label>
                   <input
                     type="text"
                     disabled={!canEditWorkouts}
                     value={workoutTitle}
                     onChange={(e) => setWorkoutTitle(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white"
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-bold ${bgInput}`}
                   />
                 </div>
                 <div className="flex items-center justify-between px-4">
                   <div>
-                    <span className="text-[11px] text-slate-400 block">ระยะทางรวมทั้งหมด</span>
-                    <span className="text-2xl font-black text-cyan-400">
-                      {totalWorkoutDist.toLocaleString()} เมตร
+                    <span className={`text-[11px] block ${textMuted}`}>{t.totalDist}</span>
+                    <span className="text-2xl font-black text-cyan-500">
+                      {totalWorkoutDist.toLocaleString()} {t.meters}
                     </span>
                   </div>
                 </div>
@@ -2133,10 +2274,10 @@ export default function ApexAquaEnterpriseApp() {
             </div>
 
             {groups.map((grp, gIdx) => (
-              <div key={grp.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+              <div key={grp.id} className={`border rounded-2xl p-5 space-y-3 ${bgCard}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="h-6 w-6 rounded-full bg-cyan-950 text-cyan-400 font-bold flex items-center justify-center">
+                    <span className="h-6 w-6 rounded-full bg-cyan-500/10 text-cyan-500 font-bold flex items-center justify-center">
                       {gIdx + 1}
                     </span>
                     <select
@@ -2151,14 +2292,14 @@ export default function ApexAquaEnterpriseApp() {
                           )
                         )
                       }
-                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 font-bold text-white"
+                      className={`border rounded-lg px-3 py-1.5 font-bold ${bgInput}`}
                     >
                       <option value="Warm-up">Warm-up</option>
                       <option value="Pre-set">Pre-set</option>
                       <option value="Main Set">Main Set</option>
                       <option value="Cool-down">Cool-down</option>
                     </select>
-                    <span className="text-slate-400">ทำซ้ำ:</span>
+                    <span className={textMuted}>Rounds:</span>
                     <input
                       type="number"
                       min={1}
@@ -2169,9 +2310,8 @@ export default function ApexAquaEnterpriseApp() {
                           groups.map((g) => (g.id === grp.id ? { ...g, rounds: Number(e.target.value) } : g))
                         )
                       }
-                      className="w-12 bg-slate-950 border border-slate-700 rounded-lg py-1 text-center text-amber-400 font-bold"
+                      className={`w-12 border rounded-lg py-1 text-center text-amber-500 font-bold ${bgInput}`}
                     />
-                    <span className="text-slate-400">รอบ</span>
                   </div>
 
                   {canEditWorkouts && (
@@ -2179,15 +2319,15 @@ export default function ApexAquaEnterpriseApp() {
                       <button
                         type="button"
                         onClick={() => handleAddItemToGroup(grp.id)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-bold flex items-center gap-1"
+                        className={`px-3 py-1.5 rounded-lg border text-cyan-500 text-xs font-bold flex items-center gap-1 ${bgSubCard}`}
                       >
-                        <Plus className="h-3.5 w-3.5" /> เพิ่มท่าว่ายในรอบนี้
+                        <Plus className="h-3.5 w-3.5" /> + Item
                       </button>
                       {groups.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleDeleteGroup(grp.id)}
-                          className="p-1.5 rounded-lg bg-rose-950/60 text-rose-400 hover:bg-rose-900 hover:text-white"
+                          className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -2203,7 +2343,7 @@ export default function ApexAquaEnterpriseApp() {
                     return (
                       <div
                         key={item.id}
-                        className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs"
+                        className={`border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs ${bgSubCard}`}
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <input
@@ -2225,7 +2365,7 @@ export default function ApexAquaEnterpriseApp() {
                                 )
                               )
                             }
-                            className="w-12 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center text-white font-bold"
+                            className={`w-12 border rounded px-2 py-1 text-center font-bold ${bgInput}`}
                           />
                           <span>×</span>
                           <select
@@ -2247,7 +2387,7 @@ export default function ApexAquaEnterpriseApp() {
                                 )
                               )
                             }
-                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-cyan-400 font-bold"
+                            className={`border rounded px-2 py-1 text-cyan-500 font-bold ${bgInput}`}
                           >
                             {[25, 50, 100, 200, 400, 800].map((d) => (
                               <option key={d} value={d}>
@@ -2272,7 +2412,7 @@ export default function ApexAquaEnterpriseApp() {
                                 )
                               )
                             }
-                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white"
+                            className={`border rounded px-2 py-1 ${bgInput}`}
                           >
                             <option value="Freestyle">Freestyle</option>
                             <option value="Backstroke">Backstroke</option>
@@ -2280,7 +2420,7 @@ export default function ApexAquaEnterpriseApp() {
                             <option value="Butterfly">Butterfly</option>
                             <option value="IM">IM</option>
                           </select>
-                          <span>พัก:</span>
+                          <span className={textMuted}>Rest:</span>
                           <input
                             type="number"
                             disabled={!canEditWorkouts}
@@ -2301,23 +2441,23 @@ export default function ApexAquaEnterpriseApp() {
                                 )
                               )
                             }
-                            className="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center text-amber-400"
+                            className={`w-14 border rounded px-2 py-1 text-center text-amber-500 ${bgInput}`}
                           />
-                          <span>วิ</span>
+                          <span className={textMuted}>s</span>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <span className={`px-2.5 py-1 rounded-lg border font-bold ${zone.color}`}>
                             {zone.code} ({zone.label})
                           </span>
-                          <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 font-mono font-bold">
+                          <span className={`px-2.5 py-1 rounded-lg border text-cyan-500 font-mono font-bold ${bgCard}`}>
                             {interval}
                           </span>
                           {canEditWorkouts && grp.items.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleDeleteItemFromGroup(grp.id, item.id)}
-                              className="p-1 text-slate-500 hover:text-rose-400"
+                              className="p-1 text-slate-400 hover:text-rose-500"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -2334,49 +2474,44 @@ export default function ApexAquaEnterpriseApp() {
               <button
                 type="button"
                 onClick={handleAddGroup}
-                className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-700 hover:border-cyan-500 text-slate-400 hover:text-cyan-400 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                className={`w-full py-4 rounded-2xl border-2 border-dashed border-slate-400/50 hover:border-cyan-500 font-bold text-xs flex items-center justify-center gap-2 transition-all ${textMuted} hover:text-cyan-500`}
               >
-                <Plus className="h-4 w-4" /> เพิ่มกลุ่มเซตซ้อมใหม่ (เช่น Pre-set, Main Set, Cool-down)
+                <Plus className="h-4 w-4" /> {t.addGroupBtn}
               </button>
             )}
           </div>
         )}
 
         {/* ==================================================================== */}
-        {/* TAB 6: STAFF MANAGEMENT (HEAD COACH ONLY)                            */}
+        {/* TAB 6: STAFF MANAGEMENT                                              */}
         {/* ==================================================================== */}
         {activeTab === 'staff' && currentUser.role === 'coach' && isHeadCoach && (
           <div className="max-w-4xl mx-auto space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+            <div className={`border rounded-3xl p-6 space-y-5 ${bgCard}`}>
               <div>
-                <span className="text-[10px] font-bold uppercase text-amber-400">
-                  Role-Based Access Control (Staff Management)
-                </span>
-                <h2 className="text-xl font-black text-white">จัดการสิทธิ์ทีมงานผู้ฝึกสอน (ผู้ช่วยโค้ช)</h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  เพิ่มอีเมลของผู้ช่วยโค้ชและกำหนดสิทธิ์การเข้าถึงเมนูสำคัญ (ผู้ช่วยโค้ชต้องลงทะเบียน Sign Up ด้วยอีเมลที่กำหนดไว้ที่นี่)
-                </p>
+                <span className="text-[10px] font-bold uppercase text-amber-500">Staff RBAC</span>
+                <h2 className={`text-xl font-black ${textMain}`}>{t.staffTitle}</h2>
               </div>
 
               <form
                 onSubmit={handleAddStaff}
-                className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs"
+                className={`grid grid-cols-1 md:grid-cols-4 gap-3 p-4 rounded-2xl border text-xs ${bgSubCard}`}
               >
                 <input
                   type="text"
                   required
-                  placeholder="ชื่อ - นามสกุลโค้ช"
+                  placeholder="Coach Name"
                   value={newStaff.full_name}
                   onChange={(e) => setNewStaff({ ...newStaff, full_name: e.target.value })}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                  className={`border rounded-xl px-3 py-2.5 ${bgInput}`}
                 />
                 <input
                   type="email"
                   required
-                  placeholder="อีเมลสำหรับล็อกอิน"
+                  placeholder="Email"
                   value={newStaff.email}
                   onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value })}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                  className={`border rounded-xl px-3 py-2.5 ${bgInput}`}
                 />
                 <select
                   value={newStaff.staff_role}
@@ -2386,16 +2521,16 @@ export default function ApexAquaEnterpriseApp() {
                       staff_role: e.target.value as 'head_coach' | 'assistant_coach',
                     })
                   }
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                  className={`border rounded-xl px-3 py-2.5 ${bgInput}`}
                 >
-                  <option value="assistant_coach">ผู้ช่วยโค้ช (Assistant Coach)</option>
-                  <option value="head_coach">หัวหน้าโค้ช (Head Coach)</option>
+                  <option value="assistant_coach">Assistant Coach</option>
+                  <option value="head_coach">Head Coach</option>
                 </select>
                 <button
                   type="submit"
                   className="bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl py-2.5 px-4 flex items-center justify-center gap-1.5"
                 >
-                  <Plus className="h-4 w-4" /> เพิ่มทีมงานโค้ช
+                  <Plus className="h-4 w-4" /> Add Staff
                 </button>
               </form>
 
@@ -2403,22 +2538,16 @@ export default function ApexAquaEnterpriseApp() {
                 {staffList.map((st) => (
                   <div
                     key={st.id}
-                    className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 text-xs"
+                    className={`border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 text-xs ${bgSubCard}`}
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-white">{st.full_name}</span>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            st.staff_role === 'head_coach'
-                              ? 'bg-amber-950 text-amber-400 border border-amber-700'
-                              : 'bg-cyan-950 text-cyan-400 border border-cyan-800'
-                          }`}
-                        >
-                          {st.staff_role === 'head_coach' ? 'Head Coach' : 'Assistant Coach'}
+                        <span className={`font-bold text-sm ${textMain}`}>{st.full_name}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-500 border border-cyan-500/30">
+                          {st.staff_role}
                         </span>
                       </div>
-                      <span className="text-slate-400 block mt-0.5">{st.email}</span>
+                      <span className={`block mt-0.5 ${textMuted}`}>{st.email}</span>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
@@ -2426,33 +2555,33 @@ export default function ApexAquaEnterpriseApp() {
                         type="button"
                         disabled={st.staff_role === 'head_coach'}
                         onClick={() => handleToggleStaffPerm(st, 'can_edit_workouts')}
-                        className={`px-3 py-1.5 rounded-xl font-bold border transition-all ${
+                        className={`px-3 py-1.5 rounded-xl font-bold border ${
                           st.can_edit_workouts
-                            ? 'bg-emerald-950/70 border-emerald-700 text-emerald-400'
-                            : 'bg-slate-900 border-slate-700 text-slate-500'
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500'
+                            : `${bgCard} ${textMuted}`
                         }`}
                       >
-                        {st.can_edit_workouts ? '✓ แก้ไขโปรแกรมซ้อมได้' : '✕ ดูโปรแกรมได้อย่างเดียว'}
+                        {st.can_edit_workouts ? '✓ Edit Workouts' : '✕ View Only'}
                       </button>
 
                       <button
                         type="button"
                         disabled={st.staff_role === 'head_coach'}
                         onClick={() => handleToggleStaffPerm(st, 'can_manage_athletes')}
-                        className={`px-3 py-1.5 rounded-xl font-bold border transition-all ${
+                        className={`px-3 py-1.5 rounded-xl font-bold border ${
                           st.can_manage_athletes
-                            ? 'bg-emerald-950/70 border-emerald-700 text-emerald-400'
-                            : 'bg-slate-900 border-slate-700 text-slate-500'
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500'
+                            : `${bgCard} ${textMuted}`
                         }`}
                       >
-                        {st.can_manage_athletes ? '✓ เพิ่ม/ลบนักกีฬาได้' : '✕ จัดการรายชื่อไม่ได้'}
+                        {st.can_manage_athletes ? '✓ Manage Roster' : '✕ No Roster Edit'}
                       </button>
 
                       {st.staff_role !== 'head_coach' && (
                         <button
                           type="button"
                           onClick={() => handleDeleteStaff(st.id)}
-                          className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/50"
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-500"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
