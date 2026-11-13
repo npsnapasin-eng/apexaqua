@@ -6,7 +6,7 @@ import {
   BarChart3, Timer, Filter, Save, AlertCircle, Plus, Trash2,
   LogOut, Lock, FileSignature, Trophy, Users, RefreshCw, Layers,
   Upload, Download, FileSpreadsheet, Calendar, UserCog, Mail, Baby,
-  Sun, Moon, Globe
+  Sun, Moon, Globe, Camera, Building2, HeartPulse, GraduationCap, IdCard
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -15,14 +15,33 @@ type UserRole = 'coach' | 'parent' | 'athlete';
 type LangCode = 'th' | 'en' | 'zh';
 type ThemeMode = 'dark' | 'light';
 
+interface ClubInfo {
+  id: string;
+  name: string;
+  club_code: string;
+}
+
 interface AthleteProfile {
   id: string;
+  club_id: string;
   full_name: string;
+  first_name_th: string;
+  last_name_th: string;
+  first_name_en: string;
+  last_name_en: string;
   nickname: string;
   lane: number;
   age_group: string;
   gender: 'Male' | 'Female';
   athlete_code: string;
+  student_id: string;
+  national_id: string;
+  school_name: string;
+  grade_level: string;
+  birth_date: string; // YYYY-MM-DD (ค.ศ.)
+  blood_group: string;
+  medical_conditions: string;
+  avatar_url: string;
   pin_code: string;
   pdpa_signed: boolean;
   parent_name: string;
@@ -31,6 +50,7 @@ interface AthleteProfile {
 
 interface StaffMember {
   id: string;
+  club_id: string;
   full_name: string;
   email: string;
   staff_role: 'head_coach' | 'assistant_coach';
@@ -47,6 +67,7 @@ interface PoolsideRow extends AthleteProfile {
 
 interface WorkoutLogRecord {
   id: string;
+  club_id: string;
   athlete_id: string;
   workout_date: string;
   duration_minutes: number;
@@ -79,6 +100,7 @@ interface TSAStandard {
 
 interface CompLog {
   id: string;
+  club_id: string;
   athlete_id: string;
   meet_name: string;
   course: '50m' | '25m';
@@ -103,22 +125,58 @@ interface WorkoutGroup {
   items: WorkoutItem[];
 }
 
-// --- Multi-Language Dictionary (TH / EN / ZH) ---
+// --- Helper: คำนวณอายุอัตโนมัติตามปีปัจจุบัน และจัดกลุ่มอายุ TSA ---
+function calculateDynamicAge(birthDateStr?: string): { ageYears: number; beYear: number; adYear: number; autoGroup: string } {
+  if (!birthDateStr) return { ageYears: 10, beYear: 2559, adYear: 2016, autoGroup: 'group_4' };
+  const dob = new Date(birthDateStr);
+  if (isNaN(dob.getTime())) return { ageYears: 10, beYear: 2559, adYear: 2016, autoGroup: 'group_4' };
+
+  const now = new Date();
+  const currentAdYear = now.getFullYear();
+  const adYear = dob.getFullYear();
+  const beYear = adYear + 543;
+
+  // คำนวณอายุตามปีเกิด (มาตรฐานการแบ่งรุ่นอายุแข่งขันว่ายน้ำ)
+  const ageYears = Math.max(1, currentAdYear - adYear);
+
+  let autoGroup = 'open';
+  if (ageYears <= 9) autoGroup = 'group_5';
+  else if (ageYears <= 11) autoGroup = 'group_4';
+  else if (ageYears <= 13) autoGroup = 'group_3';
+  else if (ageYears <= 15) autoGroup = 'group_2';
+  else if (ageYears <= 18) autoGroup = 'group_1';
+
+  return { ageYears, beYear, adYear, autoGroup };
+}
+
+function formatThaiBirthDate(birthDateStr?: string): string {
+  if (!birthDateStr) return '-';
+  const d = new Date(birthDateStr);
+  if (isNaN(d.getTime())) return birthDateStr;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const ad = d.getFullYear();
+  const be = ad + 543;
+  return `${day}/${month}/${ad} (พ.ศ. ${be})`;
+}
+
+// --- Multi-Language Dictionary ---
 const I18N: Record<LangCode, Record<string, string>> = {
   th: {
-    subtitle: 'ระบบบริหารและวิเคราะห์ศักยภาพนักกีฬาว่ายน้ำสโมสร',
+    subtitle: 'ระบบบริหารและวิเคราะห์ศักยภาพนักกีฬาว่ายน้ำสโมสร (Multi-Club SaaS)',
     roleCoach: 'โค้ช / Staff',
     roleParent: 'ผู้ปกครอง',
     roleAthlete: 'นักกีฬา',
     signIn: 'เข้าสู่ระบบ (Sign In)',
-    signUp: 'ลงทะเบียนใหม่ (Sign Up)',
+    signUp: 'ลงทะเบียนสโมสรใหม่ (Sign Up)',
+    clubNameLabel: 'ชื่อสโมสรว่ายน้ำของคุณ (สำหรับแยกฐานข้อมูลสโมสร)',
     emailLabel: 'อีเมลผู้ใช้งาน (Email)',
     passwordLabel: 'รหัสผ่าน (Password อย่างน้อย 6 ตัวอักษร)',
     selectAthlete: 'เลือกชื่อนักกีฬา',
     pinLabel: 'รหัส PIN ประจำตัว 4 หลัก',
     loginBtn: 'เข้าสู่ระบบ ApexAqua',
-    pdpaFooter: 'คุ้มครองข้อมูลสุขภาพเยาวชนตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)',
-    tabPoolside: '1. คุมริมสระ & รายชื่อ',
+    pdpaFooter: 'แยกฐานข้อมูลรายสโมสร (club_id) และคุ้มครองข้อมูลสุขภาพเยาวชนตาม PDPA',
+    tabPoolside: '1. คุมริมสระ & ประวัตินักกีฬา',
     tabReadiness: '2. เช็กอินเช้า',
     tabAcwr: '3. ACWR, ประวัติ & TSA',
     tabPdpa: '4. ครอบครัว & PDPA',
@@ -128,7 +186,7 @@ const I18N: Record<LangCode, Record<string, string>> = {
     dayMode: 'โหมดกลางวัน',
     nightMode: 'โหมดกลางคืน',
     childrenLabel: 'บุตรหลานในความดูแล',
-    addAthleteBtn: 'เพิ่มรายชื่อนักกีฬาจริง',
+    addAthleteBtn: 'ลงทะเบียนนักกีฬาใหม่ (ประวัติละเอียด)',
     allLanes: 'ทุกลู่',
     lane: 'ลู่',
     duration: 'เวลาซ้อม',
@@ -161,19 +219,20 @@ const I18N: Record<LangCode, Record<string, string>> = {
     staffTitle: 'จัดการสิทธิ์ทีมงานผู้ฝึกสอน (ผู้ช่วยโค้ช)',
   },
   en: {
-    subtitle: 'Club Swimming Sports Science & Performance Platform',
+    subtitle: 'Club Swimming Sports Science & Multi-Tenant SaaS Platform',
     roleCoach: 'Coach / Staff',
     roleParent: 'Parent',
     roleAthlete: 'Athlete',
     signIn: 'Sign In',
-    signUp: 'Sign Up (New)',
+    signUp: 'Register New Club (Sign Up)',
+    clubNameLabel: 'Swimming Club Name (Isolated Tenant DB)',
     emailLabel: 'Email Address',
     passwordLabel: 'Password (min. 6 characters)',
     selectAthlete: 'Select Athlete',
     pinLabel: '4-Digit Personal PIN',
     loginBtn: 'Sign In to ApexAqua',
-    pdpaFooter: 'Youth health data protected under PDPA compliance.',
-    tabPoolside: '1. Poolside & Roster',
+    pdpaFooter: 'Strict club_id tenant isolation & PDPA compliant.',
+    tabPoolside: '1. Poolside & Bio Roster',
     tabReadiness: '2. Readiness',
     tabAcwr: '3. ACWR & TSA',
     tabPdpa: '4. Family & PDPA',
@@ -183,7 +242,7 @@ const I18N: Record<LangCode, Record<string, string>> = {
     dayMode: 'Day Mode',
     nightMode: 'Night Mode',
     childrenLabel: 'Children in Family Account',
-    addAthleteBtn: 'Add Real Athlete',
+    addAthleteBtn: 'Register New Athlete (Full Bio)',
     allLanes: 'All Lanes',
     lane: 'Lane',
     duration: 'Duration',
@@ -216,19 +275,20 @@ const I18N: Record<LangCode, Record<string, string>> = {
     staffTitle: 'Coaching Staff & Permissions Management',
   },
   zh: {
-    subtitle: '游泳俱乐部运动科学与竞技表现管理平台',
+    subtitle: '游泳俱乐部运动科学与多租户SaaS管理平台',
     roleCoach: '教练 / 管理',
     roleParent: '家长',
     roleAthlete: '运动员',
     signIn: '登录 (Sign In)',
-    signUp: '首次注册 (Sign Up)',
+    signUp: '注册新俱乐部 (Sign Up)',
+    clubNameLabel: '游泳俱乐部名称 (独立数据库隔离)',
     emailLabel: '电子邮箱 (Email)',
     passwordLabel: '密码 (至少6位字符)',
     selectAthlete: '选择运动员姓名',
     pinLabel: '4位数个人PIN码',
     loginBtn: '进入 ApexAqua 系统',
-    pdpaFooter: '青少年健康数据受 PDPA 个人数据保护法严格保护',
-    tabPoolside: '1. 池边控制与名单',
+    pdpaFooter: '严格按俱乐部(club_id)隔离数据并符合PDPA隐私保护法',
+    tabPoolside: '1. 池边控制与完整档案',
     tabReadiness: '2. 晨间状态打卡',
     tabAcwr: '3. ACWR负荷与达标',
     tabPdpa: '4. 家庭与PDPA授权',
@@ -238,7 +298,7 @@ const I18N: Record<LangCode, Record<string, string>> = {
     dayMode: '日间模式',
     nightMode: '夜间模式',
     childrenLabel: '家庭关联运动员',
-    addAthleteBtn: '添加正式运动员',
+    addAthleteBtn: '注册正式运动员 (完整档案)',
     allLanes: '全部泳道',
     lane: '泳道',
     duration: '训练时长',
@@ -273,12 +333,12 @@ const I18N: Record<LangCode, Record<string, string>> = {
 };
 
 const AGE_GROUP_LABELS: Record<string, string> = {
-  group_5: 'Group 5 (7–9 yrs)',
-  group_4: 'Group 4 (10–11 yrs)',
-  group_3: 'Group 3 (12–13 yrs)',
-  group_2: 'Group 2 (14–15 yrs)',
-  group_1: 'Group 1 (16–18 yrs)',
-  open: 'Open',
+  group_5: 'Group 5 (7–9 ปี)',
+  group_4: 'Group 4 (10–11 ปี)',
+  group_3: 'Group 3 (12–13 ปี)',
+  group_2: 'Group 2 (14–15 ปี)',
+  group_1: 'Group 1 (16–18 ปี)',
+  open: 'Open (19+ ปี)',
 };
 
 const TURN_ADVANTAGE_PER_50M: Record<string, number> = {
@@ -289,14 +349,13 @@ const TURN_ADVANTAGE_PER_50M: Record<string, number> = {
   IM: 0.85,
 };
 
-export default function ApexAquaEnterpriseApp() {
+export default function ApexAquaMultiTenantApp() {
   // --- Theme & Language State ---
   const [theme, setTheme] = useState<ThemeMode>('dark');
   const [lang, setLang] = useState<LangCode>('th');
   const t = I18N[lang];
   const isLight = theme === 'light';
 
-  // Dynamic Theme Classes
   const bgPage = isLight ? 'bg-slate-100 text-slate-900' : 'bg-slate-950 text-slate-100';
   const bgCard = isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800 shadow-xl';
   const bgSubCard = isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800';
@@ -304,11 +363,14 @@ export default function ApexAquaEnterpriseApp() {
   const textMain = isLight ? 'text-slate-900' : 'text-white';
   const textMuted = isLight ? 'text-slate-500' : 'text-slate-400';
 
-  // --- 1. Authentication & Session State ---
+  // --- 1. Authentication & Strict Multi-Tenant Club State ---
+  const [clubs, setClubs] = useState<ClubInfo[]>([]);
   const [currentUser, setCurrentUser] = useState<{
     role: UserRole;
     name: string;
     email?: string;
+    clubId: string;
+    clubName: string;
     athleteId?: string;
     staffPermissions?: {
       isHeadCoach: boolean;
@@ -319,6 +381,7 @@ export default function ApexAquaEnterpriseApp() {
 
   const [loginTab, setLoginTab] = useState<UserRole>('coach');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [newClubNameInput, setNewClubNameInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -328,21 +391,34 @@ export default function ApexAquaEnterpriseApp() {
   const [loginError, setLoginError] = useState('');
   const [activeParentChildId, setActiveParentChildId] = useState<string>('');
 
-  // --- 2. Core Data State ---
+  // --- 2. Core Data State (Filtered by club_id) ---
+  const [allAthletesPublic, setAllAthletesPublic] = useState<AthleteProfile[]>([]);
   const [athletes, setAthletes] = useState<AthleteProfile[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [activeTab, setActiveTab] = useState<'poolside' | 'readiness' | 'acwr_tsa' | 'pdpa' | 'builder' | 'staff'>('poolside');
 
-  // --- 3. Add New Athlete Modal State ---
+  // --- 3. Add Comprehensive Athlete Modal State ---
   const [showAddModal, setShowAddModal] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [newAthlete, setNewAthlete] = useState({
-    full_name: '',
+    first_name_th: '',
+    last_name_th: '',
+    first_name_en: '',
+    last_name_en: '',
     nickname: '',
-    lane: 1,
-    age_group: 'group_4',
     gender: 'Male' as 'Male' | 'Female',
+    birth_date: '2016-01-01', // ค.ศ.
+    be_year_input: '2559',     // พ.ศ. ซิงค์อัตโนมัติ
     athlete_code: '',
+    student_id: '',
+    national_id: '',
+    school_name: '',
+    grade_level: 'ป.4',
+    blood_group: 'O',
+    medical_conditions: '',
+    avatar_url: '',
+    lane: 1,
     pin_code: '1234',
     parent_name: '',
     parent_email: '',
@@ -426,23 +502,49 @@ export default function ApexAquaEnterpriseApp() {
   const [savingWorkout, setSavingWorkout] = useState(false);
   const [workoutMsg, setWorkoutMsg] = useState<string | null>(null);
 
-  // --- Fetch All Data from Supabase ---
-  const fetchAllData = useCallback(async () => {
+  // --- Initial Pre-Login Fetch (Clubs & Athlete Dropdown) ---
+  const fetchPreLoginMeta = useCallback(async () => {
+    const { data: clubData } = await supabase.from('clubs').select('*');
+    setClubs((clubData || []) as ClubInfo[]);
+
+    const { data: athData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'athlete')
+      .order('lane', { ascending: true });
+    const athList = (athData || []) as AthleteProfile[];
+    setAllAthletesPublic(athList);
+    if (athList.length > 0 && !selectedAthleteLoginId) {
+      setSelectedAthleteLoginId(athList[0].id);
+    }
+  }, [selectedAthleteLoginId]);
+
+  useEffect(() => {
+    fetchPreLoginMeta();
+  }, [fetchPreLoginMeta]);
+
+  // --- Strict Multi-Tenant Fetch (กรองตาม club_id ของผู้ใช้เท่านั้น เร็วและปลอดภัย 100%) ---
+  const fetchTenantData = useCallback(async (targetClubId: string) => {
+    if (!targetClubId) return;
     setLoadingData(true);
     try {
+      // 1. ดึงเฉพาะนักกีฬาในสโมสรนี้ (club_id)
       const { data: profData, error: profErr } = await supabase
         .from('profiles')
         .select('*')
         .eq('role', 'athlete')
+        .eq('club_id', targetClubId)
         .order('lane', { ascending: true });
 
       if (profErr) throw profErr;
       const list = (profData || []) as AthleteProfile[];
       setAthletes(list);
 
+      // 2. ดึงเฉพาะทีมงานโค้ชในสโมสรนี้
       const { data: staffData } = await supabase
         .from('club_staff')
         .select('*')
+        .eq('club_id', targetClubId)
         .order('created_at', { ascending: true });
       setStaffList((staffData || []) as StaffMember[]);
 
@@ -462,12 +564,12 @@ export default function ApexAquaEnterpriseApp() {
       );
 
       if (list.length > 0) {
-        if (!readinessAthleteId) setReadinessAthleteId(list[0].id);
-        if (!selectedAthleteLoginId) setSelectedAthleteLoginId(list[0].id);
-        if (!selectedBenchmarkAthleteId) setSelectedBenchmarkAthleteId(list[0].id);
-        if (!pdpaTargetAthleteId) setPdpaTargetAthleteId(list[0].id);
+        setReadinessAthleteId((prev) => prev || list[0].id);
+        setSelectedBenchmarkAthleteId((prev) => prev || list[0].id);
+        setPdpaTargetAthleteId((prev) => prev || list[0].id);
       }
 
+      // 3. ดึงประวัติการซ้อมเฉพาะของสโมสรนี้
       const twentyEightDaysAgo = new Date();
       twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
       const sevenDaysAgo = new Date();
@@ -476,14 +578,17 @@ export default function ApexAquaEnterpriseApp() {
       const { data: logsData } = await supabase
         .from('workout_logs')
         .select('*')
+        .eq('club_id', targetClubId)
         .order('workout_date', { ascending: false });
 
       const typedLogs = (logsData || []) as WorkoutLogRecord[];
       setAllWorkoutLogs(typedLogs);
 
+      // 4. ดึงความพร้อมเช้าเฉพาะของสโมสรนี้
       const { data: readyData } = await supabase
         .from('daily_readiness')
         .select('*')
+        .eq('club_id', targetClubId)
         .order('created_at', { ascending: false });
 
       const computedAcwr: ACWRResult[] = list.map((ath) => {
@@ -511,29 +616,26 @@ export default function ApexAquaEnterpriseApp() {
       });
       setAcwrList(computedAcwr);
 
+      // 5. เกณฑ์เวลา TSA (ใช้ร่วมกันทั้งประเทศ) + สถิติ PB ของสโมสรนี้
       const { data: tsaData } = await supabase.from('tsa_standards').select('*');
       setTsaStandards((tsaData || []) as TSAStandard[]);
 
       const { data: compData } = await supabase
         .from('competition_logs')
         .select('*')
+        .eq('club_id', targetClubId)
         .order('official_time_sec', { ascending: true });
       setCompLogs((compData || []) as CompLog[]);
     } catch (err) {
-      console.error('Error loading Supabase data:', err);
+      console.error('Error loading tenant data:', err);
     } finally {
       setLoadingData(false);
     }
-  }, [readinessAthleteId, selectedAthleteLoginId, selectedBenchmarkAthleteId, pdpaTargetAthleteId]);
+  }, []);
 
-  useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
-
-  // --- Shared Theme & Language Switcher Bar Component ---
+  // --- Shared Theme & Language Switcher Bar ---
   const renderControlsBar = () => (
     <div className="flex items-center gap-2">
-      {/* Language Switcher (TH / EN / ZH) */}
       <div className={`flex items-center rounded-xl border p-1 text-[11px] font-bold ${bgSubCard}`}>
         <Globe className="h-3.5 w-3.5 text-cyan-500 mx-1.5" />
         {(['th', 'en', 'zh'] as LangCode[]).map((code) => (
@@ -542,9 +644,7 @@ export default function ApexAquaEnterpriseApp() {
             type="button"
             onClick={() => setLang(code)}
             className={`px-2 py-1 rounded-lg transition-all ${
-              lang === code
-                ? 'bg-cyan-600 text-white shadow'
-                : `${textMuted} hover:text-cyan-500`
+              lang === code ? 'bg-cyan-600 text-white shadow' : `${textMuted} hover:text-cyan-500`
             }`}
           >
             {code === 'th' ? 'TH' : code === 'en' ? 'EN' : '中文'}
@@ -552,7 +652,6 @@ export default function ApexAquaEnterpriseApp() {
         ))}
       </div>
 
-      {/* Day / Night Theme Toggle */}
       <button
         type="button"
         onClick={() => setTheme(isLight ? 'dark' : 'light')}
@@ -561,7 +660,6 @@ export default function ApexAquaEnterpriseApp() {
             ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
             : 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700'
         }`}
-        title={isLight ? t.nightMode : t.dayMode}
       >
         {isLight ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
         <span className="hidden sm:inline">{isLight ? t.nightMode : t.dayMode}</span>
@@ -569,36 +667,42 @@ export default function ApexAquaEnterpriseApp() {
     </div>
   );
 
-  // --- Handlers: Login & Sign Up ---
+  // --- Handlers: Multi-Tenant Login & Club Registration ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
+    // 1. Athlete PIN Login
     if (loginTab === 'athlete') {
-      const ath = athletes.find((a) => a.id === selectedAthleteLoginId);
+      const ath = allAthletesPublic.find((a) => a.id === selectedAthleteLoginId);
       if (!ath) {
-        setLoginError('No athlete profile found.');
+        setLoginError('ไม่พบข้อมูลนักกีฬา');
         return;
       }
       if (athletePinInput === ath.pin_code) {
+        const clubObj = clubs.find((c) => c.id === ath.club_id);
         setCurrentUser({
           role: 'athlete',
           name: `${ath.full_name} (${ath.nickname})`,
+          clubId: ath.club_id,
+          clubName: clubObj?.name || 'Swimming Club',
           athleteId: ath.id,
         });
         setReadinessAthleteId(ath.id);
         setSelectedBenchmarkAthleteId(ath.id);
         setActiveTab('readiness');
+        await fetchTenantData(ath.club_id);
       } else {
-        setLoginError('Invalid 4-digit PIN.');
+        setLoginError('รหัส PIN 4 หลักไม่ถูกต้อง');
       }
       return;
     }
 
+    // 2. Coach & Parent Supabase Auth
     setAuthLoading(true);
     try {
       const cleanEmail = emailInput.trim().toLowerCase();
-      if (!cleanEmail || !passwordInput) throw new Error('Email & Password required');
+      if (!cleanEmail || !passwordInput) throw new Error('กรุณากรอกอีเมลและรหัสผ่าน');
 
       if (authMode === 'signup') {
         const { error: signUpErr } = await supabase.auth.signUp({
@@ -606,6 +710,40 @@ export default function ApexAquaEnterpriseApp() {
           password: passwordInput,
         });
         if (signUpErr) throw signUpErr;
+
+        // หากเป็นการลงทะเบียนโค้ชใหม่ -> สร้างสโมสรใหม่ (club_id เฉพาะตัว)
+        if (loginTab === 'coach') {
+          const clubTitle = newClubNameInput.trim() || `Club (${cleanEmail.split('@')[0]})`;
+          const { data: createdClub, error: clubErr } = await supabase
+            .from('clubs')
+            .insert([{ name: clubTitle, club_code: `CLB-${Math.floor(1000 + Math.random() * 9000)}` }])
+            .select()
+            .single();
+          if (clubErr) throw clubErr;
+
+          await supabase.from('club_staff').insert([
+            {
+              club_id: createdClub.id,
+              full_name: `Head Coach (${clubTitle})`,
+              email: cleanEmail,
+              staff_role: 'head_coach',
+              can_edit_workouts: true,
+              can_manage_athletes: true,
+            },
+          ]);
+
+          setCurrentUser({
+            role: 'coach',
+            name: `Head Coach`,
+            email: cleanEmail,
+            clubId: createdClub.id,
+            clubName: createdClub.name,
+            staffPermissions: { isHeadCoach: true, canEditWorkouts: true, canManageAthletes: true },
+          });
+          setActiveTab('poolside');
+          await fetchTenantData(createdClub.id);
+          return;
+        }
       } else {
         const { error: signInErr } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
@@ -615,34 +753,48 @@ export default function ApexAquaEnterpriseApp() {
       }
 
       if (loginTab === 'coach') {
-        const staffRecord = staffList.find((s) => s.email.toLowerCase() === cleanEmail);
-        const isFirstOrHead = !staffRecord ? staffList.length === 0 : staffRecord.staff_role === 'head_coach';
+        const { data: staffRows } = await supabase
+          .from('club_staff')
+          .select('*')
+          .eq('email', cleanEmail);
+        const staffRecord = staffRows?.[0] as StaffMember | undefined;
 
-        if (!staffRecord && !isFirstOrHead) {
+        if (!staffRecord) {
           await supabase.auth.signOut();
-          throw new Error('Unauthorized staff email.');
+          throw new Error('ไม่พบอีเมลนี้ในระบบทีมงานโค้ช (หากต้องการเปิดสโมสรใหม่ ให้กดแท็บ "ลงทะเบียนสโมสรใหม่")');
         }
+
+        const { data: cData } = await supabase.from('clubs').select('*').eq('id', staffRecord.club_id).single();
 
         setCurrentUser({
           role: 'coach',
-          name: staffRecord ? staffRecord.full_name : `Head Coach (${cleanEmail})`,
+          name: staffRecord.full_name,
           email: cleanEmail,
+          clubId: staffRecord.club_id,
+          clubName: cData?.name || 'Swimming Club',
           staffPermissions: {
-            isHeadCoach: isFirstOrHead,
-            canEditWorkouts: isFirstOrHead ? true : Boolean(staffRecord?.can_edit_workouts),
-            canManageAthletes: isFirstOrHead ? true : Boolean(staffRecord?.can_manage_athletes),
+            isHeadCoach: staffRecord.staff_role === 'head_coach',
+            canEditWorkouts: staffRecord.can_edit_workouts,
+            canManageAthletes: staffRecord.can_manage_athletes,
           },
         });
         setActiveTab('poolside');
+        await fetchTenantData(staffRecord.club_id);
       } else if (loginTab === 'parent') {
-        const myChildren = athletes.filter(
-          (a) => a.parent_email && a.parent_email.toLowerCase() === cleanEmail
-        );
+        const { data: childrenRows } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('role', 'athlete')
+          .eq('parent_email', cleanEmail);
+
+        const myChildren = (childrenRows || []) as AthleteProfile[];
         if (myChildren.length === 0) {
-          throw new Error('No athletes linked to this parent email.');
+          throw new Error('ไม่พบรายชื่อนักกีฬาที่ผูกกับอีเมลผู้ปกครองนี้ กรุณาแจ้งโค้ชให้ระบุอีเมลของคุณในประวัตินักกีฬา');
         }
 
         const firstChild = myChildren[0];
+        const { data: cData } = await supabase.from('clubs').select('*').eq('id', firstChild.club_id).single();
+
         setActiveParentChildId(firstChild.id);
         setReadinessAthleteId(firstChild.id);
         setSelectedBenchmarkAthleteId(firstChild.id);
@@ -653,9 +805,12 @@ export default function ApexAquaEnterpriseApp() {
           role: 'parent',
           name: `Parent (${cleanEmail})`,
           email: cleanEmail,
+          clubId: firstChild.club_id,
+          clubName: cData?.name || 'Swimming Club',
           athleteId: firstChild.id,
         });
         setActiveTab('pdpa');
+        await fetchTenantData(firstChild.club_id);
       }
     } catch (err: unknown) {
       setLoginError(err instanceof Error ? err.message : String(err));
@@ -668,6 +823,7 @@ export default function ApexAquaEnterpriseApp() {
     await supabase.auth.signOut();
     setCurrentUser(null);
     setActiveParentChildId('');
+    await fetchPreLoginMeta();
   };
 
   const handleSwitchParentChild = (childId: string) => {
@@ -680,13 +836,141 @@ export default function ApexAquaEnterpriseApp() {
     setCurrentUser((prev) => (prev ? { ...prev, athleteId: childId } : null));
   };
 
+  // --- Photo Upload Handler (Supabase Storage) ---
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+    setUploadingPhoto(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.clubId}/${Date.now()}.${fileExt}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('athlete-photos')
+        .upload(fileName, file, { upsert: true });
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage.from('athlete-photos').getPublicUrl(fileName);
+      setNewAthlete((prev) => ({ ...prev, avatar_url: urlData.publicUrl }));
+    } catch (err: unknown) {
+      alert('อัปโหลดรูปภาพไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  // --- Sync Birth Date ค.ศ. <-> พ.ศ. ---
+  const handleAdDateChange = (adDateStr: string) => {
+    const yearAd = Number(adDateStr.split('-')[0]);
+    const yearBe = !isNaN(yearAd) && yearAd > 1900 ? String(yearAd + 543) : '';
+    setNewAthlete((prev) => ({
+      ...prev,
+      birth_date: adDateStr,
+      be_year_input: yearBe,
+    }));
+  };
+
+  const handleBeYearChange = (beYearStr: string) => {
+    const beNum = Number(beYearStr);
+    let updatedDate = newAthlete.birth_date;
+    if (!isNaN(beNum) && beNum > 2450 && beNum < 2650) {
+      const adNum = beNum - 543;
+      const parts = (newAthlete.birth_date || '2016-01-01').split('-');
+      updatedDate = `${adNum}-${parts[1] || '01'}-${parts[2] || '01'}`;
+    }
+    setNewAthlete((prev) => ({
+      ...prev,
+      be_year_input: beYearStr,
+      birth_date: updatedDate,
+    }));
+  };
+
+  // --- Add / Delete Real Athlete (Comprehensive Bio + club_id) ---
+  const handleAddAthlete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !newAthlete.first_name_th.trim()) return;
+    setAddingAthlete(true);
+    try {
+      const fullNameTh = `${newAthlete.first_name_th.trim()} ${newAthlete.last_name_th.trim()}`.trim();
+      const { autoGroup } = calculateDynamicAge(newAthlete.birth_date);
+      const code = newAthlete.athlete_code.trim() || `ATH-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const { error } = await supabase.from('profiles').insert([
+        {
+          club_id: currentUser.clubId,
+          full_name: fullNameTh,
+          first_name_th: newAthlete.first_name_th.trim(),
+          last_name_th: newAthlete.last_name_th.trim(),
+          first_name_en: newAthlete.first_name_en.trim(),
+          last_name_en: newAthlete.last_name_en.trim(),
+          nickname: newAthlete.nickname.trim() || newAthlete.first_name_th.trim(),
+          role: 'athlete',
+          lane: Number(newAthlete.lane),
+          age_group: autoGroup,
+          gender: newAthlete.gender,
+          birth_date: newAthlete.birth_date,
+          athlete_code: code,
+          student_id: newAthlete.student_id.trim(),
+          national_id: newAthlete.national_id.trim(),
+          school_name: newAthlete.school_name.trim(),
+          grade_level: newAthlete.grade_level.trim(),
+          blood_group: newAthlete.blood_group,
+          medical_conditions: newAthlete.medical_conditions.trim(),
+          avatar_url: newAthlete.avatar_url,
+          pin_code: newAthlete.pin_code || '1234',
+          parent_name: newAthlete.parent_name.trim(),
+          parent_email: newAthlete.parent_email.trim().toLowerCase(),
+          pdpa_signed: false,
+        },
+      ]);
+      if (error) throw error;
+
+      setShowAddModal(false);
+      setNewAthlete({
+        first_name_th: '',
+        last_name_th: '',
+        first_name_en: '',
+        last_name_en: '',
+        nickname: '',
+        gender: 'Male',
+        birth_date: '2016-01-01',
+        be_year_input: '2559',
+        athlete_code: '',
+        student_id: '',
+        national_id: '',
+        school_name: '',
+        grade_level: 'ป.4',
+        blood_group: 'O',
+        medical_conditions: '',
+        avatar_url: '',
+        lane: 1,
+        pin_code: '1234',
+        parent_name: '',
+        parent_email: '',
+      });
+      await fetchTenantData(currentUser.clubId);
+      await fetchPreLoginMeta();
+    } catch (err: unknown) {
+      alert('บันทึกข้อมูลนักกีฬาไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setAddingAthlete(false);
+    }
+  };
+
+  const handleDeleteAthlete = async (id: string, name: string) => {
+    if (!currentUser || !confirm(`ยืนยันการลบข้อมูล "${name}"?`)) return;
+    await supabase.from('profiles').delete().eq('id', id).eq('club_id', currentUser.clubId);
+    await fetchTenantData(currentUser.clubId);
+    await fetchPreLoginMeta();
+  };
+
   // --- Staff Management Handlers ---
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStaff.full_name.trim() || !newStaff.email.trim()) return;
+    if (!currentUser || !newStaff.full_name.trim() || !newStaff.email.trim()) return;
     try {
       const { error } = await supabase.from('club_staff').insert([
         {
+          club_id: currentUser.clubId,
           full_name: newStaff.full_name.trim(),
           email: newStaff.email.trim().toLowerCase(),
           staff_role: newStaff.staff_role,
@@ -702,7 +986,7 @@ export default function ApexAquaEnterpriseApp() {
         can_edit_workouts: false,
         can_manage_athletes: false,
       });
-      await fetchAllData();
+      await fetchTenantData(currentUser.clubId);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
     }
@@ -712,76 +996,30 @@ export default function ApexAquaEnterpriseApp() {
     staff: StaffMember,
     field: 'can_edit_workouts' | 'can_manage_athletes'
   ) => {
+    if (!currentUser) return;
     await supabase
       .from('club_staff')
       .update({ [field]: !staff[field] })
       .eq('id', staff.id);
-    await fetchAllData();
+    await fetchTenantData(currentUser.clubId);
   };
 
   const handleDeleteStaff = async (id: string) => {
-    if (!confirm('Remove staff access?')) return;
+    if (!currentUser || !confirm('Remove staff access?')) return;
     await supabase.from('club_staff').delete().eq('id', id);
-    await fetchAllData();
-  };
-
-  // --- Athlete Management Handlers ---
-  const handleAddAthlete = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAthlete.full_name.trim()) return;
-    setAddingAthlete(true);
-    try {
-      const code = newAthlete.athlete_code.trim() || `SW-${Math.floor(1000 + Math.random() * 9000)}`;
-      const { error } = await supabase.from('profiles').insert([
-        {
-          full_name: newAthlete.full_name.trim(),
-          nickname: newAthlete.nickname.trim() || newAthlete.full_name.split(' ')[0],
-          role: 'athlete',
-          lane: Number(newAthlete.lane),
-          age_group: newAthlete.age_group,
-          gender: newAthlete.gender,
-          athlete_code: code,
-          pin_code: newAthlete.pin_code || '1234',
-          parent_name: newAthlete.parent_name.trim(),
-          parent_email: newAthlete.parent_email.trim().toLowerCase(),
-          pdpa_signed: false,
-        },
-      ]);
-      if (error) throw error;
-      setShowAddModal(false);
-      setNewAthlete({
-        full_name: '',
-        nickname: '',
-        lane: 1,
-        age_group: 'group_4',
-        gender: 'Male',
-        athlete_code: '',
-        pin_code: '1234',
-        parent_name: '',
-        parent_email: '',
-      });
-      await fetchAllData();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
-    } finally {
-      setAddingAthlete(false);
-    }
-  };
-
-  const handleDeleteAthlete = async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"?`)) return;
-    await supabase.from('profiles').delete().eq('id', id);
-    await fetchAllData();
+    await fetchTenantData(currentUser.clubId);
   };
 
   // --- Poolside & Readiness Handlers ---
   const handleSavePoolside = async () => {
+    if (!currentUser) return;
     const attendedRows = poolsideRows.filter((r) => r.attended);
     if (attendedRows.length === 0) return;
     setSavingPoolside(true);
     setPoolsideMsg(null);
     try {
       const payload = attendedRows.map((r) => ({
+        club_id: currentUser.clubId,
         athlete_id: r.id,
         workout_date: new Date().toISOString().split('T')[0],
         duration_minutes: sessionDuration,
@@ -792,9 +1030,9 @@ export default function ApexAquaEnterpriseApp() {
       if (error) throw error;
       setPoolsideMsg({
         type: 'ok',
-        text: `Saved session load for ${attendedRows.length} athletes!`,
+        text: `บันทึกภาระงานจริงของนักกีฬา ${attendedRows.length} คน ลงฐานข้อมูลสโมสรเรียบร้อยแล้ว!`,
       });
-      await fetchAllData();
+      await fetchTenantData(currentUser.clubId);
     } catch (err: unknown) {
       setPoolsideMsg({
         type: 'err',
@@ -807,12 +1045,13 @@ export default function ApexAquaEnterpriseApp() {
 
   const handleSaveReadiness = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!readinessAthleteId) return;
+    if (!currentUser || !readinessAthleteId) return;
     setSavingReadiness(true);
     setReadinessMsg(null);
     try {
       const { error } = await supabase.from('daily_readiness').insert([
         {
+          club_id: currentUser.clubId,
           athlete_id: readinessAthleteId,
           rhr,
           sleep_hours: sleepHours,
@@ -825,8 +1064,8 @@ export default function ApexAquaEnterpriseApp() {
         },
       ]);
       if (error) throw error;
-      setReadinessMsg({ type: 'ok', text: 'Morning readiness saved to cloud!' });
-      await fetchAllData();
+      setReadinessMsg({ type: 'ok', text: 'บันทึกความพร้อมเช้าเรียบร้อยแล้ว!' });
+      await fetchTenantData(currentUser.clubId);
     } catch (err: unknown) {
       setReadinessMsg({
         type: 'err',
@@ -859,7 +1098,7 @@ export default function ApexAquaEnterpriseApp() {
 
   const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !currentUser) return;
     setImportingCsv(true);
     setCsvImportMsg(null);
     try {
@@ -910,7 +1149,7 @@ export default function ApexAquaEnterpriseApp() {
       if (error) throw error;
 
       setCsvImportMsg(`Imported ${rowsToInsert.length / 2} 50m events + ${rowsToInsert.length / 2} auto-converted 25m events!`);
-      await fetchAllData();
+      await fetchTenantData(currentUser.clubId);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -925,15 +1164,19 @@ export default function ApexAquaEnterpriseApp() {
         ? allWorkoutLogs
         : allWorkoutLogs.filter((l) => l.athlete_id === currentUser?.athleteId);
 
-    const header = 'Date,Athlete,Nickname,Group,Duration(min),sRPE,SessionLoad(AU)\n';
+    const header = 'Date,AthleteCode,AthleteTH,AthleteEN,Nickname,Age,School,Duration(min),sRPE,SessionLoad(AU)\n';
     const body = visibleLogs
       .map((log) => {
         const ath = athletes.find((a) => a.id === log.athlete_id);
+        const { ageYears } = calculateDynamicAge(ath?.birth_date);
         return [
           log.workout_date,
+          `"${ath?.athlete_code || '-'}"`,
           `"${ath?.full_name || '-'}"`,
+          `"${ath?.first_name_en || ''} ${ath?.last_name_en || ''}"`,
           `"${ath?.nickname || '-'}"`,
-          `"${AGE_GROUP_LABELS[ath?.age_group || ''] || ath?.age_group || '-'}"`,
+          ageYears,
+          `"${ath?.school_name || '-'}"`,
           log.duration_minutes,
           log.srpe,
           log.session_load_au,
@@ -953,10 +1196,11 @@ export default function ApexAquaEnterpriseApp() {
 
   const handleAddCompTime = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBenchmarkAthleteId || !newComp.official_time_sec) return;
+    if (!currentUser || !selectedBenchmarkAthleteId || !newComp.official_time_sec) return;
     try {
       const { error } = await supabase.from('competition_logs').insert([
         {
+          club_id: currentUser.clubId,
           athlete_id: selectedBenchmarkAthleteId,
           meet_name: newComp.meet_name,
           course: tsaCourse,
@@ -967,7 +1211,7 @@ export default function ApexAquaEnterpriseApp() {
       ]);
       if (error) throw error;
       setNewComp({ ...newComp, official_time_sec: '' });
-      await fetchAllData();
+      await fetchTenantData(currentUser.clubId);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
     }
@@ -975,7 +1219,7 @@ export default function ApexAquaEnterpriseApp() {
 
   const handleSignPdpa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pdpaTargetAthleteId || !parentSignerName.trim()) return;
+    if (!currentUser || !pdpaTargetAthleteId || !parentSignerName.trim()) return;
     try {
       await supabase.from('pdpa_consents').insert([
         {
@@ -989,8 +1233,8 @@ export default function ApexAquaEnterpriseApp() {
         .from('profiles')
         .update({ pdpa_signed: true, parent_name: parentSignerName.trim() })
         .eq('id', pdpaTargetAthleteId);
-      alert('PDPA Digital E-Consent Signed!');
-      await fetchAllData();
+      alert('ลงนามยินยอม PDPA Digital E-Consent สำเร็จ!');
+      await fetchTenantData(currentUser.clubId);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
     }
@@ -1069,18 +1313,20 @@ export default function ApexAquaEnterpriseApp() {
   );
 
   const handleSaveWorkout = async () => {
+    if (!currentUser) return;
     setSavingWorkout(true);
     setWorkoutMsg(null);
     try {
       const { error } = await supabase.from('workouts').insert([
         {
+          club_id: currentUser.clubId,
           title: workoutTitle,
           total_distance_m: totalWorkoutDist,
           set_data: groups,
         },
       ]);
       if (error) throw error;
-      setWorkoutMsg(`Saved "${workoutTitle}" (${totalWorkoutDist.toLocaleString()} m)!`);
+      setWorkoutMsg(`บันทึกโปรแกรม "${workoutTitle}" (${totalWorkoutDist.toLocaleString()} ม.) ลงฐานข้อมูลสโมสรสำเร็จ!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1089,12 +1335,11 @@ export default function ApexAquaEnterpriseApp() {
   };
 
   // ============================================================================
-  // VIEW 1: LOGIN SCREEN
+  // VIEW 1: LOGIN & MULTI-TENANT CLUB REGISTRATION SCREEN
   // ============================================================================
   if (!currentUser) {
     return (
       <div className={`min-h-screen ${bgPage} flex flex-col items-center justify-center p-4 transition-colors`}>
-        {/* Top Controls on Login Page */}
         <div className="mb-4">{renderControlsBar()}</div>
 
         <div className={`max-w-md w-full border rounded-3xl p-7 space-y-6 ${bgCard}`}>
@@ -1140,10 +1385,10 @@ export default function ApexAquaEnterpriseApp() {
                     onChange={(e) => setSelectedAthleteLoginId(e.target.value)}
                     className={`w-full border rounded-xl px-4 py-3 text-sm outline-none ${bgInput}`}
                   >
-                    {athletes.length === 0 && <option value="">-- No Athletes --</option>}
-                    {athletes.map((a) => (
+                    {allAthletesPublic.length === 0 && <option value="">-- No Athletes --</option>}
+                    {allAthletesPublic.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.full_name} ({a.nickname})
+                        [{a.athlete_code || 'ATH'}] {a.full_name} ({a.nickname})
                       </option>
                     ))}
                   </select>
@@ -1178,6 +1423,23 @@ export default function ApexAquaEnterpriseApp() {
                     {t.signUp}
                   </button>
                 </div>
+
+                {authMode === 'signup' && loginTab === 'coach' && (
+                  <div>
+                    <label className={`block text-xs font-bold mb-1 text-emerald-500`}>{t.clubNameLabel} *</label>
+                    <div className="relative">
+                      <Building2 className="h-4 w-4 text-emerald-500 absolute left-3.5 top-3.5" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="เช่น สโมสรว่ายน้ำกรุงเทพฯ"
+                        value={newClubNameInput}
+                        onChange={(e) => setNewClubNameInput(e.target.value)}
+                        className={`w-full border rounded-xl pl-10 pr-4 py-3 text-sm outline-none ${bgInput}`}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className={`block text-xs font-bold mb-1 ${textMain}`}>{t.emailLabel}</label>
@@ -1261,7 +1523,7 @@ export default function ApexAquaEnterpriseApp() {
   }
 
   // ============================================================================
-  // VIEW 3: MAIN APPLICATION DASHBOARD
+  // VIEW 3: MAIN APPLICATION DASHBOARD (ISOLATED BY club_id)
   // ============================================================================
   const parentChildrenList =
     currentUser.role === 'parent' && currentUser.email
@@ -1304,12 +1566,13 @@ export default function ApexAquaEnterpriseApp() {
   const canEditWorkouts = currentUser.staffPermissions?.canEditWorkouts ?? false;
   const isHeadCoach = currentUser.staffPermissions?.isHeadCoach ?? false;
 
+  const previewAgeInfo = calculateDynamicAge(newAthlete.birth_date);
+
   return (
     <div className={`min-h-screen ${bgPage} pb-20 transition-colors`}>
       {/* Top Navbar */}
       <header className={`sticky top-0 z-40 backdrop-blur border-b px-4 py-3 ${isLight ? 'bg-white/95 border-slate-200' : 'bg-slate-900/95 border-slate-800'}`}>
         <div className="max-w-6xl mx-auto flex flex-col gap-3">
-          {/* Top Row: Logo + Theme & Language Switcher */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow">
@@ -1318,18 +1581,18 @@ export default function ApexAquaEnterpriseApp() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className={`font-black text-lg ${textMain}`}>ApexAqua</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
-                    LIVE
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-500 border border-cyan-500/30 flex items-center gap-1">
+                    <Building2 className="h-3 w-3" /> {currentUser.clubName}
                   </span>
                 </div>
-                <p className="text-[11px] text-cyan-500 font-semibold">{currentUser.name}</p>
+                <p className="text-[11px] text-emerald-500 font-semibold">{currentUser.name}</p>
               </div>
             </div>
 
             {renderControlsBar()}
           </div>
 
-          {/* Bottom Row: Navigation Tabs */}
+          {/* Navigation Tabs */}
           <div className={`flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl border text-xs font-bold ${bgSubCard}`}>
             {currentUser.role === 'coach' && (
               <button
@@ -1429,7 +1692,7 @@ export default function ApexAquaEnterpriseApp() {
 
       <main className="max-w-6xl mx-auto p-4 mt-2">
         {/* ==================================================================== */}
-        {/* TAB 1: POOLSIDE & REAL ROSTER MANAGEMENT                             */}
+        {/* TAB 1: POOLSIDE & COMPREHENSIVE ATHLETE BIO ROSTER                   */}
         {/* ==================================================================== */}
         {activeTab === 'poolside' && currentUser.role === 'coach' && (
           <div className="space-y-4">
@@ -1497,218 +1760,444 @@ export default function ApexAquaEnterpriseApp() {
             {!loadingData && athletes.length === 0 ? (
               <div className={`border-2 border-dashed rounded-3xl p-12 text-center space-y-3 ${bgCard}`}>
                 <Users className="h-12 w-12 text-slate-400 mx-auto" />
-                <h3 className={`text-lg font-bold ${textMain}`}>No Athletes Registered Yet</h3>
+                <h3 className={`text-lg font-bold ${textMain}`}>ยังไม่มีรายชื่อนักกีฬาในสโมสร {currentUser.clubName}</h3>
+                <p className={`text-xs max-w-md mx-auto ${textMuted}`}>
+                  กดปุ่ม <b>"+ {t.addAthleteBtn}"</b> ด้านบนเพื่อบันทึกรูปภาพ วันเกิด (พ.ศ./ค.ศ.) หมู่เลือด และประวัตินักกีฬา
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredPoolside.map((row) => (
-                  <div
-                    key={row.id}
-                    className={`border rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all ${bgCard} ${
-                      !row.attended && 'opacity-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-[260px]">
-                      <button
-                        onClick={() =>
-                          setPoolsideRows((prev) =>
-                            prev.map((p) => (p.id === row.id ? { ...p, attended: !p.attended } : p))
-                          )
-                        }
-                        className={`h-8 w-8 rounded-xl font-black text-sm flex items-center justify-center ${
-                          row.attended ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
-                        }`}
-                      >
-                        ✓
-                      </button>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-500">
-                            {t.lane} {row.lane}
-                          </span>
-                          <span className={`font-bold text-sm ${textMain}`}>
-                            {row.full_name} ({row.nickname})
-                          </span>
-                        </div>
-                        <div className={`flex flex-wrap items-center gap-2 text-[11px] mt-0.5 ${textMuted}`}>
-                          <span>{AGE_GROUP_LABELS[row.age_group] || row.age_group}</span>
-                          <span>• PIN: {row.pin_code}</span>
-                          {row.parent_email && <span className="text-cyan-500">• {row.parent_email}</span>}
-                          {row.pdpa_signed ? (
-                            <span className="text-emerald-500 font-bold">• PDPA ✓</span>
-                          ) : (
-                            <span className="text-amber-500">• Pending PDPA</span>
+                {filteredPoolside.map((row) => {
+                  const { ageYears, autoGroup } = calculateDynamicAge(row.birth_date);
+                  return (
+                    <div
+                      key={row.id}
+                      className={`border rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all ${bgCard} ${
+                        !row.attended && 'opacity-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3 min-w-[300px]">
+                        <button
+                          onClick={() =>
+                            setPoolsideRows((prev) =>
+                              prev.map((p) => (p.id === row.id ? { ...p, attended: !p.attended } : p))
+                            )
+                          }
+                          className={`mt-1 h-8 w-8 rounded-xl font-black text-sm flex items-center justify-center shrink-0 ${
+                            row.attended ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
+                          }`}
+                        >
+                          ✓
+                        </button>
+
+                        {/* Athlete Avatar */}
+                        {row.avatar_url ? (
+                          <img
+                            src={row.avatar_url}
+                            alt={row.nickname}
+                            className="h-12 w-12 rounded-2xl object-cover border border-cyan-500/40 shrink-0"
+                          />
+                        ) : (
+                          <div className="h-12 w-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center font-black text-cyan-500 shrink-0">
+                            {row.nickname?.slice(0, 2) || 'SW'}
+                          </div>
+                        )}
+
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-500">
+                              {t.lane} {row.lane}
+                            </span>
+                            <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-500/10 text-slate-400">
+                              {row.athlete_code}
+                            </span>
+                            <span className={`font-bold text-sm ${textMain}`}>
+                              {row.full_name} ({row.nickname})
+                            </span>
+                          </div>
+
+                          {(row.first_name_en || row.last_name_en) && (
+                            <p className="text-[11px] font-medium text-cyan-500">
+                              {row.first_name_en} {row.last_name_en}
+                            </p>
+                          )}
+
+                          <div className={`flex flex-wrap items-center gap-2 text-[11px] ${textMuted}`}>
+                            <span className="font-bold text-emerald-500">
+                              อายุ {ageYears} ปี ({AGE_GROUP_LABELS[autoGroup]})
+                            </span>
+                            <span>• เกิด: {formatThaiBirthDate(row.birth_date)}</span>
+                            {row.blood_group && (
+                              <span className="px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-500 font-bold">
+                                กรุ๊ปเลือด {row.blood_group}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className={`flex flex-wrap items-center gap-2 text-[11px] ${textMuted}`}>
+                            {row.school_name && (
+                              <span className="flex items-center gap-1">
+                                <GraduationCap className="h-3 w-3" /> {row.school_name} ({row.grade_level})
+                              </span>
+                            )}
+                            {row.student_id && <span>• เลขประจำตัว: {row.student_id}</span>}
+                            {row.national_id && (
+                              <span>• ปชช: {row.national_id.slice(0, 3)}xxxxxxxx{row.national_id.slice(-2)}</span>
+                            )}
+                          </div>
+
+                          {row.medical_conditions && (
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-500 text-[11px] font-bold">
+                              <HeartPulse className="h-3.5 w-3.5" /> โรคประจำตัว/แพ้: {row.medical_conditions}
+                            </div>
                           )}
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex-1 max-w-lg">
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className={textMuted}>
-                          {t.srpeLabel}: <b className="text-cyan-500">{row.attended ? `${row.srpe}/10` : '-'}</b>
-                        </span>
-                        <span className="font-bold text-amber-500">
-                          Session Load: {row.attended ? row.srpe * sessionDuration : 0} AU
-                        </span>
+                      {/* sRPE Controls */}
+                      <div className="flex-1 max-w-md">
+                        <div className="flex justify-between text-xs mb-1.5">
+                          <span className={textMuted}>
+                            {t.srpeLabel}: <b className="text-cyan-500">{row.attended ? `${row.srpe}/10` : '-'}</b>
+                          </span>
+                          <span className="font-bold text-amber-500">
+                            Load: {row.attended ? row.srpe * sessionDuration : 0} AU
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-11 gap-1">
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                            <button
+                              key={num}
+                              disabled={!row.attended}
+                              onClick={() =>
+                                setPoolsideRows((prev) =>
+                                  prev.map((p) => (p.id === row.id ? { ...p, srpe: num } : p))
+                                )
+                              }
+                              className={`h-8 rounded-lg text-xs font-bold ${
+                                row.srpe === num && row.attended
+                                  ? num >= 8
+                                    ? 'bg-rose-600 text-white'
+                                    : num >= 5
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-cyan-600 text-white'
+                                  : isLight
+                                  ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                              }`}
+                            >
+                              {num}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-11 gap-1">
-                        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                          <button
-                            key={num}
-                            disabled={!row.attended}
-                            onClick={() =>
-                              setPoolsideRows((prev) =>
-                                prev.map((p) => (p.id === row.id ? { ...p, srpe: num } : p))
-                              )
-                            }
-                            className={`h-8 rounded-lg text-xs font-bold ${
-                              row.srpe === num && row.attended
-                                ? num >= 8
-                                  ? 'bg-rose-600 text-white'
-                                  : num >= 5
-                                  ? 'bg-amber-500 text-white'
-                                  : 'bg-cyan-600 text-white'
-                                : isLight
-                                ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                            }`}
-                          >
-                            {num}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
 
-                    {canManageAthletes && (
-                      <button
-                        onClick={() => handleDeleteAthlete(row.id, row.full_name)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-500 self-end lg:self-center"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                      {canManageAthletes && (
+                        <button
+                          onClick={() => handleDeleteAthlete(row.id, row.full_name)}
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-500 self-end lg:self-center"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {/* Add Athlete Modal */}
+            {/* COMPREHENSIVE ATHLETE BIO REGISTRATION MODAL */}
             {showAddModal && (
-              <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className={`border rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl ${bgCard}`}>
-                  <h3 className={`text-lg font-black ${textMain}`}>{t.addAthleteBtn}</h3>
-                  <form onSubmit={handleAddAthlete} className="space-y-3 text-xs">
-                    <div>
-                      <label className={`block mb-1 ${textMuted}`}>Full Name *</label>
-                      <input
-                        required
-                        type="text"
-                        value={newAthlete.full_name}
-                        onChange={(e) => setNewAthlete({ ...newAthlete, full_name: e.target.value })}
-                        className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
+              <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                <div className={`border rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl my-8 ${bgCard}`}>
+                  <div className="flex items-center justify-between border-b border-slate-700/20 pb-3">
+                    <h3 className={`text-lg font-black ${textMain}`}>{t.addAthleteBtn}</h3>
+                    <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500">
+                      คำนวณอายุอัตโนมัติ: {previewAgeInfo.ageYears} ปี ({AGE_GROUP_LABELS[previewAgeInfo.autoGroup]})
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleAddAthlete} className="space-y-4 text-xs max-h-[75vh] overflow-y-auto pr-1">
+                    {/* Photo Upload */}
+                    <div className={`flex items-center gap-4 p-3 rounded-2xl border ${bgSubCard}`}>
+                      {newAthlete.avatar_url ? (
+                        <img
+                          src={newAthlete.avatar_url}
+                          alt="Preview"
+                          className="h-16 w-16 rounded-2xl object-cover border border-cyan-500"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 rounded-2xl bg-slate-800/40 border border-dashed border-slate-500 flex items-center justify-center text-slate-400">
+                          <Camera className="h-6 w-6" />
+                        </div>
+                      )}
                       <div>
-                        <label className={`block mb-1 ${textMuted}`}>Nickname</label>
+                        <label className={`block font-bold mb-1 ${textMain}`}>รูปโปรไฟล์นักกีฬา</label>
                         <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoUpload}
+                          className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500"
+                        />
+                        {uploadingPhoto && <span className="text-cyan-500 block mt-1">กำลังอัปโหลดรูป...</span>}
+                      </div>
+                    </div>
+
+                    {/* Names TH & EN */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className={`block mb-1 font-bold ${textMain}`}>ชื่อ (ภาษาไทย) *</label>
+                        <input
+                          required
                           type="text"
-                          value={newAthlete.nickname}
-                          onChange={(e) => setNewAthlete({ ...newAthlete, nickname: e.target.value })}
-                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
+                          placeholder="เช่น ธนกฤต"
+                          value={newAthlete.first_name_th}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, first_name_th: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
                         />
                       </div>
                       <div>
-                        <label className={`block mb-1 ${textMuted}`}>Gender</label>
+                        <label className={`block mb-1 font-bold ${textMain}`}>นามสกุล (ภาษาไทย) *</label>
+                        <input
+                          required
+                          type="text"
+                          placeholder="เช่น ใจดี"
+                          value={newAthlete.last_name_th}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, last_name_th: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block mb-1 font-bold ${textMain}`}>ชื่อเล่น *</label>
+                        <input
+                          required
+                          type="text"
+                          placeholder="เช่น น้องกฤต"
+                          value={newAthlete.nickname}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, nickname: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>First Name (English)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Thanakrit"
+                          value={newAthlete.first_name_en}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, first_name_en: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>Last Name (English)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Jaidee"
+                          value={newAthlete.last_name_en}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, last_name_en: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block mb-1 font-bold ${textMain}`}>เพศ (Gender)</label>
                         <select
                           value={newAthlete.gender}
                           onChange={(e) =>
                             setNewAthlete({ ...newAthlete, gender: e.target.value as 'Male' | 'Female' })
                           }
-                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
                         >
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
+                          <option value="Male">ชาย (Male)</option>
+                          <option value="Female">หญิง (Female)</option>
                         </select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+
+                    {/* Birth Date ค.ศ. & พ.ศ. + Auto Age */}
+                    <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-2xl border ${bgSubCard}`}>
                       <div>
-                        <label className={`block mb-1 ${textMuted}`}>Age Group</label>
-                        <select
-                          value={newAthlete.age_group}
-                          onChange={(e) => setNewAthlete({ ...newAthlete, age_group: e.target.value })}
-                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
-                        >
-                          {Object.entries(AGE_GROUP_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>
-                              {v}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={`block mb-1 ${textMuted}`}>{t.lane}</label>
-                        <select
-                          value={newAthlete.lane}
-                          onChange={(e) => setNewAthlete({ ...newAthlete, lane: Number(e.target.value) })}
-                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
-                        >
-                          {[1, 2, 3, 4, 5, 6].map((l) => (
-                            <option key={l} value={l}>
-                              {t.lane} {l}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={`block mb-1 ${textMuted}`}>Parent Name</label>
+                        <label className={`block mb-1 font-bold ${textMain}`}>วันเกิด (ค.ศ.)</label>
                         <input
-                          type="text"
-                          value={newAthlete.parent_name}
-                          onChange={(e) => setNewAthlete({ ...newAthlete, parent_name: e.target.value })}
-                          className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
+                          type="date"
+                          required
+                          value={newAthlete.birth_date}
+                          onChange={(e) => handleAdDateChange(e.target.value)}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
                         />
                       </div>
                       <div>
-                        <label className={`block mb-1 ${textMuted}`}>Athlete PIN (4 Digits)</label>
+                        <label className={`block mb-1 font-bold ${textMain}`}>ปีเกิด (พ.ศ.)</label>
+                        <input
+                          type="number"
+                          placeholder="เช่น 2559"
+                          value={newAthlete.be_year_input}
+                          onChange={(e) => handleBeYearChange(e.target.value)}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                      <div className="flex flex-col justify-center">
+                        <span className={`text-[11px] ${textMuted}`}>อายุปัจจุบัน (ปรับอัตโนมัติทุกปี)</span>
+                        <span className="text-base font-black text-cyan-500">
+                          {previewAgeInfo.ageYears} ปี ({AGE_GROUP_LABELS[previewAgeInfo.autoGroup]})
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* IDs & School Info */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>รหัสนักกีฬา (Athlete Code)</label>
+                        <input
+                          type="text"
+                          placeholder="เช่น SW-001"
+                          value={newAthlete.athlete_code}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, athlete_code: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 font-mono ${bgInput}`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>เลขประจำตัวนักเรียน</label>
+                        <input
+                          type="text"
+                          placeholder="เช่น 65432"
+                          value={newAthlete.student_id}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, student_id: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>เลขบัตรประชาชน (13 หลัก)</label>
+                        <input
+                          type="text"
+                          maxLength={13}
+                          placeholder="1xxxxxxxxxxxx"
+                          value={newAthlete.national_id}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, national_id: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 font-mono ${bgInput}`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className={`block mb-1 ${textMuted}`}>สถานศึกษา / โรงเรียน</label>
+                        <input
+                          type="text"
+                          placeholder="เช่น โรงเรียนสาธิต..."
+                          value={newAthlete.school_name}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, school_name: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>ชั้นเรียน (Grade)</label>
+                        <input
+                          type="text"
+                          placeholder="เช่น ป.4 / ม.2"
+                          value={newAthlete.grade_level}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, grade_level: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Medical & Blood Group */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className={`block mb-1 font-bold text-rose-500`}>หมู่เลือด (Blood Group)</label>
+                        <select
+                          value={newAthlete.blood_group}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, blood_group: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 font-bold ${bgInput}`}
+                        >
+                          <option value="A">กรุ๊ป A</option>
+                          <option value="B">กรุ๊ป B</option>
+                          <option value="AB">กรุ๊ป AB</option>
+                          <option value="O">กรุ๊ป O</option>
+                          <option value="Unknown">ไม่ทราบ</option>
+                        </select>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className={`block mb-1 font-bold text-rose-500`}>โรคประจำตัว / ประวัติแพ้ยา-แพ้อาหาร</label>
+                        <input
+                          type="text"
+                          placeholder="หากไม่มีให้เว้นว่าง (เช่น หอบหืด, แพ้อาหารทะเล)"
+                          value={newAthlete.medical_conditions}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, medical_conditions: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Lane, PIN & Parent Email */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-700/20">
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>ลู่ว่ายประจำ</label>
+                        <select
+                          value={newAthlete.lane}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, lane: Number(e.target.value) })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
+                        >
+                          {[1, 2, 3, 4, 5, 6].map((l) => (
+                            <option key={l} value={l}>
+                              ลู่ {l}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>รหัส PIN นักกีฬา (4 หลัก)</label>
                         <input
                           type="text"
                           maxLength={4}
                           value={newAthlete.pin_code}
                           onChange={(e) => setNewAthlete({ ...newAthlete, pin_code: e.target.value })}
-                          className={`w-full border rounded-xl px-3 py-2.5 font-mono ${bgInput}`}
+                          className={`w-full border rounded-xl px-3 py-2 font-mono ${bgInput}`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block mb-1 ${textMuted}`}>ชื่อผู้ปกครอง</label>
+                        <input
+                          type="text"
+                          placeholder="คุณพ่อ/คุณแม่..."
+                          value={newAthlete.parent_name}
+                          onChange={(e) => setNewAthlete({ ...newAthlete, parent_name: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
                         />
                       </div>
                     </div>
+
                     <div>
-                      <label className="block text-cyan-500 font-bold mb-1">Parent Email (Family Account) *</label>
+                      <label className="block text-cyan-500 font-bold mb-1">
+                        อีเมลผู้ปกครอง (ใช้อีเมลเดียวกันหากมีลูก 2–3 คนในบ้าน) *
+                      </label>
                       <input
                         required
                         type="email"
                         placeholder="parent@example.com"
                         value={newAthlete.parent_email}
                         onChange={(e) => setNewAthlete({ ...newAthlete, parent_email: e.target.value })}
-                        className={`w-full border rounded-xl px-3 py-2.5 ${bgInput}`}
+                        className={`w-full border rounded-xl px-3 py-2 ${bgInput}`}
                       />
                     </div>
+
                     <div className="flex justify-end gap-2 pt-3">
                       <button
                         type="button"
                         onClick={() => setShowAddModal(false)}
                         className="px-4 py-2 rounded-xl bg-slate-200 text-slate-800 font-bold"
                       >
-                        Cancel
+                        ยกเลิก
                       </button>
                       <button
                         type="submit"
                         disabled={addingAthlete}
-                        className="px-5 py-2 rounded-xl bg-cyan-600 text-white font-bold"
+                        className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold shadow"
                       >
-                        Save
+                        {addingAthlete ? 'กำลังบันทึก...' : 'บันทึกประวัตินักกีฬา'}
                       </button>
                     </div>
                   </form>
@@ -1856,7 +2345,7 @@ export default function ApexAquaEnterpriseApp() {
                   <h2 className={`text-xl font-black ${textMain}`}>{t.acwrTitle}</h2>
                 </div>
                 <button
-                  onClick={fetchAllData}
+                  onClick={() => fetchTenantData(currentUser.clubId)}
                   className={`px-3.5 py-2 rounded-xl border text-xs font-bold text-cyan-500 flex items-center gap-1.5 ${bgCard}`}
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> {t.refreshBtn}
@@ -2020,11 +2509,14 @@ export default function ApexAquaEnterpriseApp() {
                   disabled={currentUser.role !== 'coach'}
                   className={`border rounded-xl px-3 py-2 text-xs font-bold ${bgInput}`}
                 >
-                  {visibleAthletesForRole.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.full_name} ({AGE_GROUP_LABELS[a.age_group]})
-                    </option>
-                  ))}
+                  {visibleAthletesForRole.map((a) => {
+                    const { autoGroup } = calculateDynamicAge(a.birth_date);
+                    return (
+                      <option key={a.id} value={a.id}>
+                        {a.full_name} ({AGE_GROUP_LABELS[autoGroup]})
+                      </option>
+                    );
+                  })}
                 </select>
 
                 <div className={`flex p-1 rounded-xl border text-xs font-bold ${bgSubCard}`}>
@@ -2180,15 +2672,15 @@ export default function ApexAquaEnterpriseApp() {
                 <div className={`border rounded-2xl p-4 text-xs space-y-2 leading-relaxed ${bgSubCard} ${textMuted}`}>
                   <p className="font-bold text-cyan-500">PDPA Youth Health Consent v2.2:</p>
                   <p>
-                    1. Physiological readiness (RHR, sleep hours, muscle soreness) and training workload data are collected solely for athlete safety and performance planning.
+                    1. ข้อมูลประวัติส่วนบุคคล หมู่เลือด โรคประจำตัว ความพร้อมทางร่างกาย และสถิติฝึกซ้อม จะถูกจัดเก็บภายใต้รหัสสโมสร {currentUser.clubName} เพื่อความปลอดภัยในการฝึกซ้อมเท่านั้น
                   </p>
                   <p>
-                    2. All records are protected by Row Level Security (RLS) accessible only to authorized club coaches and the signing parent/guardian.
+                    2. ข้อมูลถูกแยกสิทธิ์การเข้าถึงอย่างเด็ดขาด (Strict Multi-tenant Isolation) ไม่สามารถเข้าถึงได้จากสโมสรอื่น
                   </p>
                 </div>
 
                 <div>
-                  <label className={`block text-xs font-bold mb-1 ${textMain}`}>Parent / Legal Guardian Full Name *</label>
+                  <label className={`block text-xs font-bold mb-1 ${textMain}`}>ชื่อ-นามสกุล บิดา / มารดา / ผู้ปกครองตามกฎหมาย *</label>
                   <input
                     required
                     type="text"
@@ -2489,7 +2981,7 @@ export default function ApexAquaEnterpriseApp() {
           <div className="max-w-4xl mx-auto space-y-6">
             <div className={`border rounded-3xl p-6 space-y-5 ${bgCard}`}>
               <div>
-                <span className="text-[10px] font-bold uppercase text-amber-500">Staff RBAC</span>
+                <span className="text-[10px] font-bold uppercase text-amber-500">Staff RBAC ({currentUser.clubName})</span>
                 <h2 className={`text-xl font-black ${textMain}`}>{t.staffTitle}</h2>
               </div>
 
