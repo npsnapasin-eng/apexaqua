@@ -7,7 +7,7 @@ import {
   LogOut, Lock, FileSignature, Trophy, Users, RefreshCw, Layers,
   Upload, Download, FileSpreadsheet, Calendar, UserCog, Mail, Baby,
   Sun, Moon, Globe, Camera, Building2, HeartPulse, GraduationCap,
-  Wifi, WifiOff, Sparkles, Clock, Activity, BookOpen, Utensils, BedDouble
+  Wifi, WifiOff, Sparkles, Clock, Activity, Utensils, BedDouble
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -62,8 +62,8 @@ interface StaffMember {
 interface PoolsideRow extends AthleteProfile {
   attended: boolean;
   srpe: number;
-  strokeRate: string; // Optional Test Set
-  dps: string;        // Optional Test Set
+  strokeRate: string;
+  dps: string;
 }
 
 interface WorkoutLogRecord {
@@ -151,7 +151,7 @@ interface WorkoutGroup {
   items: WorkoutItem[];
 }
 
-// --- Workout Preset Templates (เพิ่มความเร็วหน้าสระ) ---
+// --- Workout Preset Templates ---
 const WORKOUT_TEMPLATES: { name: string; title: string; groups: WorkoutGroup[] }[] = [
   {
     name: '1. Aerobic Threshold (EN2)',
@@ -257,6 +257,39 @@ function formatThaiBirthDate(birthDateStr?: string): string {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const ad = d.getFullYear();
   return `${day}/${month}/${ad} (พ.ศ. ${ad + 543})`;
+}
+
+// --- Smart CSV Parsers (รองรับเวลา 1:02.50, ชื่อรุ่นไทย/อังกฤษ, ท่าว่ายไทย/อังกฤษ) ---
+function parseTimeToSeconds(raw: string): number {
+  const clean = raw.replace(/[^0-9:.]/g, '');
+  if (!clean) return NaN;
+  if (clean.includes(':')) {
+    const parts = clean.split(':');
+    if (parts.length === 2) {
+      return Number(parts[0]) * 60 + Number(parts[1]);
+    }
+  }
+  return Number(clean);
+}
+
+function normalizeAgeGroup(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.includes('5') || s.includes('7-9') || s.includes('8-9') || s.includes('7–9')) return 'group_5';
+  if (s.includes('4') || s.includes('10-11') || s.includes('10–11')) return 'group_4';
+  if (s.includes('3') || s.includes('12-13') || s.includes('12–13')) return 'group_3';
+  if (s.includes('2') || s.includes('14-15') || s.includes('14–15')) return 'group_2';
+  if (s.includes('1') || s.includes('16-18') || s.includes('16–18')) return 'group_1';
+  return 'open';
+}
+
+function normalizeStroke(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.includes('free') || s.includes('ฟรี')) return 'Freestyle';
+  if (s.includes('back') || s.includes('กรรเชียง')) return 'Backstroke';
+  if (s.includes('breast') || s.includes('กบ')) return 'Breaststroke';
+  if (s.includes('fly') || s.includes('butter') || s.includes('ผีเสื้อ')) return 'Butterfly';
+  if (s.includes('im') || s.includes('medley') || s.includes('เดี่ยวผสม')) return 'IM';
+  return raw.trim();
 }
 
 // --- Multi-Language Dictionary ---
@@ -590,7 +623,7 @@ export default function ApexAquaExpertValidatedApp() {
   const [poolsideRows, setPoolsideRows] = useState<PoolsideRow[]>([]);
   const [selectedLane, setSelectedLane] = useState<number | 'all'>('all');
   const [sessionDuration, setSessionDuration] = useState<number>(90);
-  const [testSetMode, setTestSetMode] = useState<boolean>(false); // Optional Stroke Rate & DPS
+  const [testSetMode, setTestSetMode] = useState<boolean>(false);
   const [savingPoolside, setSavingPoolside] = useState(false);
   const [poolsideMsg, setPoolsideMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -610,7 +643,7 @@ export default function ApexAquaExpertValidatedApp() {
   const [savingReadiness, setSavingReadiness] = useState(false);
   const [readinessMsg, setReadinessMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  // --- 7. Tab 3: ACWR (Dynamic 28d + EWMA) & TSA Benchmark ---
+  // --- 7. Tab 3: ACWR & TSA Benchmark ---
   const [acwrList, setAcwrList] = useState<ACWRResult[]>([]);
   const [allWorkoutLogs, setAllWorkoutLogs] = useState<WorkoutLogRecord[]>([]);
   const [tsaStandards, setTsaStandards] = useState<TSAStandard[]>([]);
@@ -727,14 +760,12 @@ export default function ApexAquaExpertValidatedApp() {
 
       const typedReady = (readyData || []) as ReadinessRecord[];
 
-      // --- Expert Sports Science ACWR (Dynamic Denominator for First 28 Days + EWMA) ---
       const computedAcwr: ACWRResult[] = list.map((ath) => {
         const athLogs28d = typedLogs.filter(
           (l) => l.athlete_id === ath.id && new Date(l.workout_date) >= twentyEightDaysAgo
         );
         const athLogs7d = athLogs28d.filter((l) => new Date(l.workout_date) >= sevenDaysAgo);
 
-        // คำนวณจำนวนวันจริงนับจากวันแรกที่เริ่มซ้อมในรอบ 28 วัน (Dynamic Denominator)
         let activeDaysSpan = 28;
         if (athLogs28d.length > 0) {
           const earliestDate = new Date(
@@ -755,7 +786,6 @@ export default function ApexAquaExpertValidatedApp() {
         const chronicDailyAvg = activeDaysSpan > 0 ? chronicTotal / activeDaysSpan : 0;
         const acwrVal = chronicDailyAvg > 0 ? Number((acuteDailyAvg / chronicDailyAvg).toFixed(2)) : 0;
 
-        // EWMA (Exponentially Weighted Moving Average)
         const lambdaA = 2 / (7 + 1);
         const lambdaC = 2 / (28 + 1);
         const sortedChrono = [...athLogs28d].sort(
@@ -775,7 +805,6 @@ export default function ApexAquaExpertValidatedApp() {
         });
         const ewmaRatio = ewmaC > 0 ? Number((ewmaA / ewmaC).toFixed(2)) : acwrVal;
 
-        // RHR 7-Day Personal Baseline Comparison (+7 bpm Alert)
         const athReady = typedReady.filter((r) => r.athlete_id === ath.id);
         const latestR = athReady[0] || null;
         const recent7R = athReady.slice(0, 7);
@@ -835,10 +864,9 @@ export default function ApexAquaExpertValidatedApp() {
     }
   }, []);
 
-  // --- Shared Controls Bar (Offline Status + Language + Day/Night) ---
+  // --- Shared Controls Bar ---
   const renderControlsBar = () => (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Network & Offline Queue Indicator */}
       <div
         className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 ${
           isOnline
@@ -850,7 +878,6 @@ export default function ApexAquaExpertValidatedApp() {
         <span>{isOnline ? 'Online' : `Offline (${offlineQueueCount} queued)`}</span>
       </div>
 
-      {/* Language Switcher */}
       <div className={`flex items-center rounded-xl border p-1 text-[11px] font-bold ${bgSubCard}`}>
         <Globe className="h-3.5 w-3.5 text-cyan-500 mx-1.5" />
         {(['th', 'en', 'zh'] as LangCode[]).map((code) => (
@@ -867,7 +894,6 @@ export default function ApexAquaExpertValidatedApp() {
         ))}
       </div>
 
-      {/* Day / Night Toggle */}
       <button
         type="button"
         onClick={() => setTheme(isLight ? 'dark' : 'light')}
@@ -1209,7 +1235,6 @@ export default function ApexAquaExpertValidatedApp() {
       dps_meters: testSetMode && r.dps ? Number(r.dps) : null,
     }));
 
-    // หากไม่มีเน็ต ให้เก็บลง LocalStorage เพื่อซิงค์อัตโนมัติภายหลัง
     if (typeof window !== 'undefined' && !navigator.onLine) {
       const existingRaw = localStorage.getItem('apexaqua_offline_logs');
       const existingArr = existingRaw ? JSON.parse(existingRaw) : [];
@@ -1278,7 +1303,7 @@ export default function ApexAquaExpertValidatedApp() {
     }
   };
 
-  // --- CSV & TSA Handlers ---
+  // --- CSV & TSA Handlers (รองรับเวลา 1:02.50 + รุ่นอายุไทย/อังกฤษ + ตัวคั่น , และ ;) ---
   const handleDownloadSampleCsv = () => {
     const csvContent =
       'season_year,age_group,gender,stroke,distance_m,qualifying_time_50m_sec\n' +
@@ -1286,7 +1311,7 @@ export default function ApexAquaExpertValidatedApp() {
       '2026,group_5,Male,Freestyle,50,36.80\n' +
       '2026,group_4,Female,Freestyle,50,32.80\n' +
       '2026,group_4,Male,Freestyle,50,31.50\n' +
-      '2026,group_3,Male,Freestyle,100,62.50\n' +
+      '2026,group_3,Male,Freestyle,100,1:02.50\n' +
       '2026,group_4,Male,Breaststroke,50,41.00\n';
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1306,16 +1331,29 @@ export default function ApexAquaExpertValidatedApp() {
     try {
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
-      const dataLines = lines.slice(1);
       const rowsToInsert: Omit<TSAStandard, 'id'>[] = [];
 
-      for (const line of dataLines) {
-        const cols = line.split(',').map((c) => c.trim());
-        if (cols.length < 6) continue;
-        const [yearStr, ageGroup, gender, stroke, distStr, time50Str] = cols;
-        const dist = Number(distStr);
-        const time50 = Number(time50Str);
-        if (!dist || !time50) continue;
+      for (const line of lines) {
+        const delimiter = line.includes(';') ? ';' : ',';
+        const cols = line.split(delimiter).map((c) => c.replace(/^"|"$/g, '').trim());
+        if (cols.length < 5) continue;
+
+        // ข้ามบรรทัดหัวตาราง (Header)
+        const joinedLower = cols.join(' ').toLowerCase();
+        if (joinedLower.includes('stroke') || joinedLower.includes('ท่าว่าย') || joinedLower.includes('age_group')) {
+          continue;
+        }
+
+        const hasYear = cols.length >= 6 && /^\d{4}$/.test(cols[0]);
+        const yearStr = hasYear ? cols[0] : '2026';
+        const ageGroup = normalizeAgeGroup(hasYear ? cols[1] : cols[0]);
+        const rawGender = (hasYear ? cols[2] : cols[1]).toLowerCase();
+        const gender = rawGender.includes('f') || rawGender.includes('หญิง') ? 'Female' : 'Male';
+        const stroke = normalizeStroke(hasYear ? cols[3] : cols[2]);
+        const dist = Number((hasYear ? cols[4] : cols[3]).replace(/[^0-9]/g, ''));
+        const time50 = parseTimeToSeconds(hasYear ? cols[5] : cols[4]);
+
+        if (!dist || !time50 || isNaN(time50)) continue;
 
         rowsToInsert.push({
           course: '50m',
@@ -1323,7 +1361,7 @@ export default function ApexAquaExpertValidatedApp() {
           gender,
           stroke,
           distance_m: dist,
-          qualifying_time_sec: time50,
+          qualifying_time_sec: Number(time50.toFixed(2)),
           is_official: true,
           source_notes: `TSA Official ${yearStr} (CSV)`,
         });
@@ -1344,13 +1382,17 @@ export default function ApexAquaExpertValidatedApp() {
         });
       }
 
-      if (rowsToInsert.length === 0) throw new Error('Invalid CSV format');
+      if (rowsToInsert.length === 0) {
+        throw new Error(
+          'ไม่พบแถวข้อมูลที่ถูกต้อง กรุณาจัดคอลัมน์ใน CSV เป็น: ปี, รุ่นอายุ, เพศ, ท่าว่าย, ระยะทาง, เวลา (เช่น 2026, group_4, Male, Freestyle, 50, 31.50 หรือ 1:02.50)'
+        );
+      }
 
       const payloadWithYear = rowsToInsert.map((r) => ({ ...r, season_year: 2026 }));
       const { error } = await supabase.from('tsa_standards').insert(payloadWithYear);
       if (error) throw error;
 
-      setCsvImportMsg(`Imported ${rowsToInsert.length / 2} 50m events + ${rowsToInsert.length / 2} auto-converted 25m events!`);
+      setCsvImportMsg(`นำเข้าสำเร็จ ${rowsToInsert.length / 2} รายการ (สระ 50m + แปลงสระ 25m อัตโนมัติรวม ${rowsToInsert.length} แถว)!`);
       await fetchTenantData(currentUser.clubId);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
@@ -1408,7 +1450,7 @@ export default function ApexAquaExpertValidatedApp() {
           course: tsaCourse,
           stroke: newComp.stroke,
           distance_m: Number(newComp.distance_m),
-          official_time_sec: Number(newComp.official_time_sec),
+          official_time_sec: parseTimeToSeconds(newComp.official_time_sec),
         },
       ]);
       if (error) throw error;
@@ -1419,7 +1461,7 @@ export default function ApexAquaExpertValidatedApp() {
     }
   };
 
-  // --- Sign PDPA with Legal Metadata (Timestamp & User Agent) ---
+  // --- Sign PDPA with Legal Metadata ---
   const handleSignPdpa = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !pdpaTargetAthleteId || !parentSignerName.trim()) return;
@@ -1446,7 +1488,7 @@ export default function ApexAquaExpertValidatedApp() {
     }
   };
 
-  // --- Workout Builder Helpers with Nested Sets Validation ---
+  // --- Workout Builder Helpers ---
   const handleAddGroup = () => {
     const newGrp: WorkoutGroup = {
       id: `grp-${Date.now()}`,
@@ -1524,7 +1566,6 @@ export default function ApexAquaExpertValidatedApp() {
 
   const handleSaveWorkout = async () => {
     if (!currentUser) return;
-    // Nested Sets Validation
     if (!workoutTitle.trim() || totalWorkoutDist <= 0 || totalWorkoutDist > 25000) {
       alert('กรุณาตรวจสอบชื่อโปรแกรมและจำนวนรอบ (ระยะทางรวมต้องอยู่ระหว่าง 50 - 25,000 เมตร)');
       return;
@@ -1910,15 +1951,13 @@ export default function ApexAquaExpertValidatedApp() {
         {/* ==================================================================== */}
         {activeTab === 'poolside' && currentUser.role === 'coach' && (
           <div className="space-y-4">
-            {/* Recency Effect Prevention Banner */}
             <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-xs flex flex-wrap items-center justify-between gap-2 text-cyan-500">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 shrink-0" />
                 <span>
-                  <b>คำแนะนำทางวิทยาศาสตร์การกีฬา (ป้องกัน Recency Effect):</b> ควรประเมินคะแนนความเหนื่อย sRPE หลังนักกีฬาขึ้นจากน้ำไปแล้ว <b>15–30 นาที</b>
+                  <b>คำแนะนำ (ป้องกัน Recency Effect):</b> ควรประเมินคะแนนความเหนื่อย sRPE หลังนักกีฬาขึ้นจากน้ำไปแล้ว <b>15–30 นาที</b>
                 </span>
               </div>
-              {/* Optional Biomechanics Test Set Toggle */}
               <button
                 type="button"
                 onClick={() => setTestSetMode(!testSetMode)}
@@ -2058,7 +2097,6 @@ export default function ApexAquaExpertValidatedApp() {
                             {row.school_name && <span>• {row.school_name} ({row.grade_level})</span>}
                           </div>
 
-                          {/* Medical & Readiness Alerts */}
                           <div className="flex flex-wrap gap-1.5 pt-0.5">
                             {row.medical_conditions && (
                               <span className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-500 text-[10px] font-bold">
@@ -2079,7 +2117,6 @@ export default function ApexAquaExpertValidatedApp() {
                         </div>
                       </div>
 
-                      {/* Optional Test Set Biomechanics Inputs */}
                       {testSetMode && row.attended && (
                         <div className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs ${bgSubCard}`}>
                           <div>
@@ -2114,7 +2151,6 @@ export default function ApexAquaExpertValidatedApp() {
                         </div>
                       )}
 
-                      {/* sRPE Borg CR-10 */}
                       <div className="flex-1 max-w-md">
                         <div className="flex justify-between text-xs mb-1.5">
                           <span className={textMuted}>
@@ -2516,7 +2552,6 @@ export default function ApexAquaExpertValidatedApp() {
               </div>
             </div>
 
-            {/* Youth-Friendly Visual Enthusiasm Scale (แทนคำว่าความเครียดทางจิตใจ) */}
             <div className={`p-4 rounded-2xl border space-y-2 ${bgSubCard}`}>
               <span className={`text-xs font-bold block ${textMain}`}>
                 ความกระตือรือร้นอยากลงสระวันนี้ (พลังงานทางใจ):
@@ -2543,11 +2578,9 @@ export default function ApexAquaExpertValidatedApp() {
               </p>
             </div>
 
-            {/* 5-Point Muscle Soreness Map + Pain Classification */}
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className={`text-xs font-bold ${textMain}`}>{t.sorenessTitle}</span>
-                {/* Pain Type Selector */}
                 <div className={`flex p-1 rounded-xl border text-[11px] font-bold ${bgSubCard}`}>
                   <button
                     type="button"
@@ -2870,6 +2903,7 @@ export default function ApexAquaExpertValidatedApp() {
                   <option value="Backstroke">Backstroke</option>
                   <option value="Breaststroke">Breaststroke</option>
                   <option value="Butterfly">Butterfly</option>
+                  <option value="IM">IM</option>
                 </select>
                 <select
                   value={newComp.distance_m}
@@ -2879,12 +2913,12 @@ export default function ApexAquaExpertValidatedApp() {
                   <option value={50}>50m</option>
                   <option value={100}>100m</option>
                   <option value={200}>200m</option>
+                  <option value={400}>400m</option>
                 </select>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
                   required
-                  placeholder="Seconds (e.g. 31.20)"
+                  placeholder="เช่น 31.20 หรือ 1:02.50"
                   value={newComp.official_time_sec}
                   onChange={(e) => setNewComp({ ...newComp, official_time_sec: e.target.value })}
                   className={`border rounded-xl px-3 py-2 ${bgInput}`}
@@ -2957,7 +2991,6 @@ export default function ApexAquaExpertValidatedApp() {
         {/* ==================================================================== */}
         {activeTab === 'pdpa' && (
           <div className="max-w-3xl mx-auto space-y-6">
-            {/* Parent-Friendly Summary Card (หลีกเลี่ยงศัพท์เทคนิค แปลผลเป็นคำแนะนำที่บ้าน) */}
             {(() => {
               const targetSummary = acwrList.find((a) => a.athlete.id === pdpaTargetAthleteId);
               if (!targetSummary) return null;
@@ -3017,7 +3050,6 @@ export default function ApexAquaExpertValidatedApp() {
               );
             })()}
 
-            {/* PDPA Digital E-Consent Form */}
             <div className={`border rounded-3xl p-6 space-y-4 ${bgCard}`}>
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500">
@@ -3115,7 +3147,6 @@ export default function ApexAquaExpertValidatedApp() {
                 </div>
               </div>
 
-              {/* Quick Workout Templates Bar */}
               {canEditWorkouts && (
                 <div className={`p-3 rounded-2xl border flex flex-wrap items-center gap-2 text-xs ${bgSubCard}`}>
                   <span className="font-bold text-amber-500 flex items-center gap-1 mr-1">
